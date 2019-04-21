@@ -3,7 +3,7 @@
 
 from tkinter import ttk
 import tkinter
-import twainlib
+import twainlib.data_source_manager as dsm
 
 
 class MainWindow:
@@ -39,16 +39,21 @@ class MainWindow:
         self.root.mainloop()
 
     def check_system(self):
-        system = twainlib.check_system()
+        system = dsm.check_system()
         if not system:
             system = 'Не определена'
         self.var_system.set(system)
 
     def check_twain_dll(self):
-        dll_name = twainlib.check_twain_dll()
+        """
+        dll_name = dsm.get_twain32_dll()[0]
         if not dll_name:
             dll_name = 'Не определена'
         self.var_twain_dll.set(dll_name)
+        """
+        SM = dsm.DataSourceManager(self.root)
+        #SM.get_source_list()
+
 
 
 if __name__ == "__main__":
