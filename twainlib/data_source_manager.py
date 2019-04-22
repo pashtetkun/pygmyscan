@@ -17,6 +17,7 @@ def get_twain32_dll():
     if check_system() == 'Windows':
         try:
             dll_name = 'twain_32.dll'
+            #dll_name = 'TWAINDSM.dll'
             dll = windll.LoadLibrary(dll_name)
             _GetProcAddress = windll.kernel32.GetProcAddress
             return dll_name, dll
@@ -104,7 +105,20 @@ class DataSourceManager(object):
                                    ProductName=ProductName.encode('utf8'))
         self._hwnd = parent_window.winfo_id()
         #open Data Source Manager(connection)
-        rc = self.dsm_entry(self._app_id, None, DG_CONTROL, DAT_PARENT, MSG_OPENDSM, byref(c_void_p(self._hwnd)))
+        returnCode = self.dsm_entry(self._app_id, None, DG_CONTROL, DAT_PARENT, MSG_OPENDSM, byref(c_void_p(self._hwnd)))
+        if returnCode != TWRC_SUCCESS:
+            return
+
+        #search sources
+        ds_id = TW_IDENTITY()
+        rc = self.dsm_entry(self._app_id, None, DG_CONTROL, DAT_IDENTITY, MSG_GETFIRST, byref(ds_id))
+        if rc == TWRC_FAILURE: #1 error
+            status = TW_STATUS()
+            self.dsm_entry(self._app_id, None, DG_CONTROL, DAT_STATUS, MSG_GET, byref(status))
+            if status.ConditionCode == TWCC_NODS: #no Sources found
+                print('not sources!!!')
+            return
+
         pass
 
     def _call(self, dest_id, dg, dat, msg, buf, expected_returns=()):
