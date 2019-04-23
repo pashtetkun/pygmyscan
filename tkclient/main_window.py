@@ -24,35 +24,19 @@ class MainWindow:
         self.frame = ttk.Frame()
         self.frame.pack()
 
-        self.button_check_system = ttk.Button(self.frame, text="Проверить ОС", command=self.check_system)
-        self.button_check_system.grid(row=0, column=0, sticky="ew")
-        self.var_system = tkinter.StringVar()
-        self.label_system = ttk.Label(self.frame, textvariable=self.var_system, width=100)
-        self.label_system.grid(row=0, column=1, columnspan=1, sticky="ew")
-
-        self.button_check_twain_dll = ttk.Button(self.frame, text="Проверить twain.dll", command=self.check_twain_dll)
-        self.button_check_twain_dll.grid(row=1, column=0, sticky="ew")
-        self.var_twain_dll = tkinter.StringVar()
-        self.label_twain_dll = ttk.Label(self.frame, textvariable=self.var_twain_dll, width=100)
-        self.label_twain_dll.grid(row=1, column=1, columnspan=1, sticky="ew")
+        self.button_search_sources = ttk.Button(self.frame, text="Найти сканеры", command=self.search_sources)
+        self.button_search_sources.grid(row=0, column=0, sticky="ew")
+        self.var_results = tkinter.StringVar()
+        self.label_results = ttk.Label(self.frame, textvariable=self.var_results, width=100)
+        self.label_results.grid(row=1, column=0, columnspan=1, sticky="ew")
 
         self.root.mainloop()
 
-    def check_system(self):
-        system = dsm.check_system()
-        if not system:
-            system = 'Не определена'
-        self.var_system.set(system)
-
-    def check_twain_dll(self):
-        """
-        dll_name = dsm.get_twain32_dll()[0]
-        if not dll_name:
-            dll_name = 'Не определена'
-        self.var_twain_dll.set(dll_name)
-        """
+    def search_sources(self):
         SM = dsm.DataSourceManager(self.root)
-        #SM.get_source_list()
+        sources = SM.get_sources()
+        results = ";".join(sources) if len(sources) != 0 else "ничего нет"
+        self.var_results.set(results)
 
 
 

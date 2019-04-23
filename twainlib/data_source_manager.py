@@ -104,22 +104,33 @@ class DataSourceManager(object):
                                    ProductFamily=ProductFamily.encode('utf8'),
                                    ProductName=ProductName.encode('utf8'))
         self._hwnd = parent_window.winfo_id()
-        #open Data Source Manager(connection)
-        returnCode = self.dsm_entry(self._app_id, None, DG_CONTROL, DAT_PARENT, MSG_OPENDSM, byref(c_void_p(self._hwnd)))
+
+    def get_sources(self):
+        # open Data Source Manager(connection)
+        returnCode = self.dsm_entry(self._app_id, None, DG_CONTROL, DAT_PARENT, MSG_OPENDSM,
+                                    byref(c_void_p(self._hwnd)))
         if returnCode != TWRC_SUCCESS:
             return
 
-        #search sources
-        ds_id = TW_IDENTITY()
-        rc = self.dsm_entry(self._app_id, None, DG_CONTROL, DAT_IDENTITY, MSG_GETFIRST, byref(ds_id))
-        if rc == TWRC_FAILURE: #1 error
+        # search sources
+        sources = []
+        source_info = TW_IDENTITY()
+        rc = self.dsm_entry(self._app_id, None, DG_CONTROL, DAT_IDENTITY, MSG_GETFIRST, byref(source_info))
+        if rc == TWRC_FAILURE:  # 1 error
             status = TW_STATUS()
             self.dsm_entry(self._app_id, None, DG_CONTROL, DAT_STATUS, MSG_GET, byref(status))
-            if status.ConditionCode == TWCC_NODS: #no Sources found
+            if status.ConditionCode == TWCC_NODS:  # no Sources found
                 print('not sources!!!')
-            return
+            return sources
+        sources.append(source_info.ProductName.decode("utf-8"))
 
-        pass
+        while 1:
+            rc = self.dsm_entry(self._app_id, None, DG_CONTROL, DAT_IDENTITY, MSG_GETNEXT, byref(source_info))
+            if rc == TWRC_ENDOFLIST:
+                break
+            sources.append(source_info.ProductName.decode("utf-8"))
+
+        return sources
 
     def _call(self, dest_id, dg, dat, msg, buf, expected_returns=()):
         rv = self.dsm_entry(self._app_id, dest_id, dg, dat, msg, buf)

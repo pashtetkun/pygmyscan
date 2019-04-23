@@ -9,7 +9,8 @@ from Cython.Distutils import build_ext
 
 ext_modules = [
     Extension("tkclient.mainWindow", ["tkclient/main_window.py"]),
-    Extension("twainlib.init", ["twainlib/__init_.py"]),
+    Extension("twainlib.init", ["twainlib/__init__.py"]),
+    Extension("twainlib.dataSourceManager", ["twainlib/data_source_manager.py"]),
     ]
 
 setup(
