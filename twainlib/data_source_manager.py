@@ -113,6 +113,7 @@ class DataSourceManager(object):
             return
 
         # search sources
+        self.sources_dict = {}
         sources = []
         source_info = TW_IDENTITY()
         rc = self.dsm_entry(self._app_id, None, DG_CONTROL, DAT_IDENTITY, MSG_GETFIRST, byref(source_info))
@@ -122,15 +123,29 @@ class DataSourceManager(object):
             if status.ConditionCode == TWCC_NODS:  # no Sources found
                 print('not sources!!!')
             return sources
-        sources.append(source_info.ProductName.decode("utf-8"))
+        sources.append((source_info.Id,
+                       source_info.ProductName.decode("utf-8"),
+                       str(source_info.ProtocolMajor)+"."+str(source_info.ProtocolMinor)))
+        self.sources_dict[source_info.Id] = source_info
 
         while 1:
+            source_info = TW_IDENTITY()
             rc = self.dsm_entry(self._app_id, None, DG_CONTROL, DAT_IDENTITY, MSG_GETNEXT, byref(source_info))
             if rc == TWRC_ENDOFLIST:
                 break
-            sources.append(source_info.ProductName.decode("utf-8"))
+            sources.append((source_info.Id,
+                           source_info.ProductName.decode("utf-8"),
+                           str(source_info.ProtocolMajor) + "." + str(source_info.ProtocolMinor)))
+            self.sources_dict[source_info.Id] = source_info
 
         return sources
+
+    def open_source(self, source_id):
+        source_info = self.sources_dict[source_id]
+        rc = self.dsm_entry(self._app_id, None, DG_CONTROL, DAT_IDENTITY, MSG_OPENDS, byref(source_info))
+        if rc != TWRC_SUCCESS:
+            return
+        self.selected_source = source_info
 
     def _call(self, dest_id, dg, dat, msg, buf, expected_returns=()):
         rv = self.dsm_entry(self._app_id, dest_id, dg, dat, msg, buf)
