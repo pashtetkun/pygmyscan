@@ -6,7 +6,7 @@ import ctypes
 from ctypes import *
 from ctypes import wintypes
 from twainlib import *
-from twainlib import _exc_mapping
+from twainlib import _mapping
 
 
 def check_system():
@@ -72,6 +72,12 @@ class DataSourceManager(object):
         if not twain_dll:
             return
 
+        self.dsm_entry = None
+        self._app_id = None
+        self._hwnd = None
+        self.sources_dict = {}
+        self.opened_source = None
+
         try:
             #get function DSM_Entry()
             #self.dsm_entry = twain_dll['DSM_Entry']
@@ -79,6 +85,7 @@ class DataSourceManager(object):
             address = hex(c_void_p.from_buffer(self.dsm_entry).value)
             #address = func_address('twain_32.dll', 'DSM_Entry')
             #p = POINTER(self.dsm_entry)
+            x = byref(self.dsm_entry)
 
             pass
         except AttributeError as e:
@@ -113,7 +120,6 @@ class DataSourceManager(object):
             return
 
         # search sources
-        self.sources_dict = {}
         sources = []
         source_info = TW_IDENTITY()
         rc = self.dsm_entry(self._app_id, None, DG_CONTROL, DAT_IDENTITY, MSG_GETFIRST, byref(source_info))
@@ -145,50 +151,29 @@ class DataSourceManager(object):
         rc = self.dsm_entry(self._app_id, None, DG_CONTROL, DAT_IDENTITY, MSG_OPENDS, byref(source_info))
         if rc != TWRC_SUCCESS:
             return
-        self.selected_source = source_info
+        self.opened_source = source_info
 
-    def _call(self, dest_id, dg, dat, msg, buf, expected_returns=()):
-        rv = self.dsm_entry(self._app_id, dest_id, dg, dat, msg, buf)
-        if rv == TWRC_SUCCESS or rv in expected_returns:
-            return rv
-        elif rv == TWRC_FAILURE:
-            status = TW_STATUS()
-            rv = self.dsm_entry(self._app_id,
-                             dest_id,
-                             DG_CONTROL,
-                             DAT_STATUS,
-                             MSG_GET,
-                             byref(status))
-            if rv != TWRC_SUCCESS:
-                raise Exception('DG_CONTROL DAT_STATUS MSG_GET returned non success code, rv = %d' % rv)
-            code = status.ConditionCode
-            exc = _exc_mapping.get(code,
-                                   excTWCC_UNKNOWN("ConditionCode = %d" % code))
-            raise exc
-        else:
-            raise Exception('Unexpected result: %d' % rv)
+        #get capability value
+        capability0 = TW_CAPABILITY(CAP_XFERCOUNT, TWON_DONTCARE16, 0)
+        rc0 = self.dsm_entry(self._app_id, self.opened_source, DG_CONTROL, DAT_CAPABILITY, MSG_GET, byref(capability0))
 
-    def get_source_list(self):
-        names = []
-        ds_id = TW_IDENTITY()
-        try:
-            rv = self._call(None,
-                            DG_CONTROL,
-                            DAT_IDENTITY,
-                            MSG_GETFIRST,
-                            byref(ds_id),
-                            (TWRC_SUCCESS, TWRC_ENDOFLIST))
-            pass
-        except excTWCC_NODS:
-            # there are no data sources
-            return names
+        #negotiate to receive a single image
+        ctype = _mapping[TWTY_INT16]
+        handle = windll.kernel32.GlobalAlloc(0x0040, sizeof(TW_ONEVALUE) + sizeof(ctype))
+        capability = TW_CAPABILITY(CAP_XFERCOUNT, TWON_ONEVALUE, handle)
+        rc1 = self.dsm_entry(self._app_id, self.opened_source, DG_CONTROL, DAT_CAPABILITY, MSG_SET, byref(capability))
+        if rc1 != TWRC_SUCCESS:
+            if rc1 == TWRC_CHECKSTATUS:
+                pass
+            if rc1 == TWRC_FAILURE:
+                status = TW_STATUS()
+                rc2 = self.dsm_entry(self._app_id, self.opened_source, DG_CONTROL, DAT_STATUS, MSG_GET, byref(status))
+                if status.ConditionCode == TWCC_BADVALUE:
+                    ''' The value set was out of range for this Source
+                        Use MSG_GET to determine what setting was made
+                        See the TWRC_CHECKSTATUS case handled earlier'''
+                    pass
 
-        while rv != TWRC_ENDOFLIST:
-            names.append(self._decode(ds_id.ProductName))
-            rv = self._call(None,
-                            DG_CONTROL,
-                            DAT_IDENTITY,
-                            MSG_GETNEXT,
-                            byref(ds_id),
-                            (TWRC_SUCCESS, TWRC_ENDOFLIST))
-        return names
+
+    def close_source(self, source_id):
+        pass
