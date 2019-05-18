@@ -3,7 +3,9 @@
 
 from tkinter import ttk
 import tkinter
-import twainlib.data_source_manager as dsm
+import twainlib.wrapper
+from twainlib.constants import TWLG_RUSSIAN, TWCY_RUSSIA
+from twainlib import *
 
 
 class MainWindow:
@@ -47,7 +49,9 @@ class MainWindow:
             self.table_sources.insert('', 'end', iid=source[0], values=(source[1], source[2]))
 
     def search_sources(self):
-        self.DSM = dsm.DataSourceManager(self.root)
+        self.DSM = twainlib.wrapper.SourceManager(self.root)
+        self.DSM.set_app_info(MajorNum=0, MinorNum=1, Language=TWLG_RUSSIAN, Country=TWCY_RUSSIA,
+                              ProtocolMajor=1, ProtocolMinor=9, Manufacturer="Tsibizov Pavel", ProductName="pygmyscan")
         self.sources = self.DSM.get_sources()
         self.refresh_table_sources()
         #results = ";".join(sources) if len(sources) != 0 else "ничего нет"

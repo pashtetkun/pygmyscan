@@ -5,8 +5,7 @@ import platform
 import ctypes
 from ctypes import *
 from ctypes import wintypes
-from twainlib import *
-from twainlib import _mapping
+from twainlib.constants import *
 
 
 def check_system():
@@ -45,27 +44,19 @@ def func_address(dll_name, function_name):
 
     address = _GetProcAddress(handle, function_name)
     if address is None:
-        print('Error getting address')
+        print('Error getting address1')
 
     windll.kernel32.CloseHandle(handle)
     return address
 
 
-class DataSourceManager(object):
+class SourceManager(object):
+    """
+        This object represents Data Source Manager session.
+    """
     def __init__(self,
                  parent_window=None,
-                 MajorNum=1,
-                 MinorNum=0,
-                 Language=TWLG_RUSSIAN,
-                 Country=TWCY_RUSSIA,
-                 Info="",
-                 ProductName="TWAIN Python Interface",
-                 ProtocolMajor=TWON_PROTOCOLMAJOR,
-                 ProtocolMinor=TWON_PROTOCOLMINOR,
-                 SupportedGroups=DG_IMAGE | DG_CONTROL,
-                 Manufacturer="Tsibizov Pavel",
-                 ProductFamily="TWAIN Python Interface",
-                 dsm_name=None):
+                 dll_name=None):
         self._parent_window = parent_window
         twain_dll_info = get_twain32_dll()
         twain_dll = twain_dll_info[1]
@@ -98,7 +89,20 @@ class DataSourceManager(object):
                                 c_uint16,
                                 c_uint16,
                                 c_void_p)
+        self._hwnd = parent_window.winfo_id()
 
+    def set_app_info(self,
+                     MajorNum=1,
+                     MinorNum=0,
+                     Language=TWLG_USA,
+                     Country=TWCY_USA,
+                     Info="",
+                     ProductName="TWAIN Python Interface",
+                     ProtocolMajor=TWON_PROTOCOLMAJOR,
+                     ProtocolMinor=TWON_PROTOCOLMINOR,
+                     SupportedGroups=DG_IMAGE | DG_CONTROL,
+                     Manufacturer="Kevin Gill",
+                     ProductFamily="TWAIN Python Interface"):
         self._app_id = TW_IDENTITY(Version=TW_VERSION(MajorNum=MajorNum,
                                                       MinorNum=MinorNum,
                                                       Language=Language,
@@ -110,7 +114,16 @@ class DataSourceManager(object):
                                    Manufacturer=Manufacturer.encode('utf8'),
                                    ProductFamily=ProductFamily.encode('utf8'),
                                    ProductName=ProductName.encode('utf8'))
-        self._hwnd = parent_window.winfo_id()
+
+    def load_dsm(self, dll_name=None):
+        '''
+        1 -> 2
+        :return: DSM_Entry
+        '''
+        twain_dll_info = get_twain32_dll()
+        twain_dll = twain_dll_info[1]
+        if not twain_dll:
+            return
 
     def get_sources(self):
         # open Data Source Manager(connection)
@@ -152,29 +165,6 @@ class DataSourceManager(object):
         if rc != TWRC_SUCCESS:
             return
         self.opened_source = source_info
-
-        """
-        #get capability value
-        capability0 = TW_CAPABILITY(CAP_XFERCOUNT, TWON_DONTCARE16, 0)
-        rc0 = self.dsm_entry(self._app_id, self.opened_source, DG_CONTROL, DAT_CAPABILITY, MSG_GET, byref(capability0))
-
-        #negotiate to receive a single image
-        ctype = _mapping[TWTY_INT16]
-        handle = windll.kernel32.GlobalAlloc(0x0040, sizeof(TW_ONEVALUE) + sizeof(ctype))
-        capability = TW_CAPABILITY(CAP_XFERCOUNT, TWON_ONEVALUE, handle)
-        rc1 = self.dsm_entry(self._app_id, self.opened_source, DG_CONTROL, DAT_CAPABILITY, MSG_SET, byref(capability))
-        if rc1 != TWRC_SUCCESS:
-            if rc1 == TWRC_CHECKSTATUS:
-                pass
-            if rc1 == TWRC_FAILURE:
-                status = TW_STATUS()
-                rc2 = self.dsm_entry(self._app_id, self.opened_source, DG_CONTROL, DAT_STATUS, MSG_GET, byref(status))
-                if status.ConditionCode == TWCC_BADVALUE:
-                    ''' The value set was out of range for this Source
-                        Use MSG_GET to determine what setting was made
-                        See the TWRC_CHECKSTATUS case handled earlier'''
-                    pass
-        """
 
         #get_image
         self.xfer_image_natively()
