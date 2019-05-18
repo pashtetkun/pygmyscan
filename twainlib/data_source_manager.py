@@ -153,6 +153,7 @@ class DataSourceManager(object):
             return
         self.opened_source = source_info
 
+        """
         #get capability value
         capability0 = TW_CAPABILITY(CAP_XFERCOUNT, TWON_DONTCARE16, 0)
         rc0 = self.dsm_entry(self._app_id, self.opened_source, DG_CONTROL, DAT_CAPABILITY, MSG_GET, byref(capability0))
@@ -173,7 +174,35 @@ class DataSourceManager(object):
                         Use MSG_GET to determine what setting was made
                         See the TWRC_CHECKSTATUS case handled earlier'''
                     pass
+        """
 
+        #get_image
+        self.xfer_image_natively()
+
+    def xfer_image_natively(self):
+        """Perform a 'Native' form transfer of the image.
+
+        When successful, this routine returns two values,
+        an image handle and a count of the number of images
+        remaining in the source.
+
+        If remaining number of images is zero Source will
+        transition to state 5, otherwise it stays in state 6
+        in which case you should call
+        :meth:`xfer_image_natively` again.
+
+        Valid states: 6
+        """
+        hbitmap = c_void_p()
+        rv = self.dsm_entry(self._app_id, self.opened_source, DG_IMAGE,
+                        DAT_IMAGENATIVEXFER,
+                        MSG_GET,
+                        byref(hbitmap))
+        #rv, hbitmap = self._get_native_image()
+        #more = self._end_xfer()
+        if rv == TWRC_CANCEL:
+            raise excDSTransferCancelled
+        #return hbitmap.value, more
 
     def close_source(self, source_id):
         pass
