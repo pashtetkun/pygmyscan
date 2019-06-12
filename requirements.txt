@@ -1,2 +1,2 @@
 cx-Freeze==5.1.1
-Cython==0.29.7
+Cython==0.29.10
