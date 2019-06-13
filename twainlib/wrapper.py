@@ -50,9 +50,52 @@ def func_address(dll_name, function_name):
     return address
 
 
-class SourceManager(object):
+class Application():
+    def __init__(self,
+                 MajorNum=1,
+                 MinorNum=0,
+                 Language=TWLG_USA,
+                 Country=TWCY_USA,
+                 Info="",
+                 ProductName="TWAIN Python Interface",
+                 ProtocolMajor=TWON_PROTOCOLMAJOR,
+                 ProtocolMinor=TWON_PROTOCOLMINOR,
+                 SupportedGroups=DG_IMAGE | DG_CONTROL,
+                 Manufacturer="Tsibizov Pavel",
+                 ProductFamily="TWAIN Python Interface"):
+        self._app_id = TW_IDENTITY(Version=TW_VERSION(MajorNum=MajorNum,
+                                                      MinorNum=MinorNum,
+                                                      Language=Language,
+                                                      Country=Country,
+                                                      Info=Info.encode('utf8')),
+                                   ProtocolMajor=ProtocolMajor,
+                                   ProtocolMinor=ProtocolMinor,
+                                   SupportedGroups=SupportedGroups,
+                                   Manufacturer=Manufacturer.encode('utf8'),
+                                   ProductFamily=ProductFamily.encode('utf8'),
+                                   ProductName=ProductName.encode('utf8'))
+
+    def load_source_manager(self):
+        '''
+        1 -> 2
+        :return: DSM_Entry
+        '''
+        try:
+            dll = windll.LoadLibrary('twain_32.dll')
+            #_GetProcAddress = windll.kernel32.GetProcAddress
+            dsm_entry = dll.DSM_Entry
+            address = hex(c_void_p.from_buffer(dsm_entry).value)
+            # address = func_address('twain_32.dll', 'DSM_Entry')
+            # p = POINTER(self.dsm_entry)
+            x = byref(dsm_entry)
+            return dsm_entry
+        except Exception as e:
+            return None
+
+
+class SourceManager():
     """
-        This object represents Data Source Manager session.
+        This object represents Data Source Manager
     """
     def __init__(self,
                  parent_window=None,
@@ -110,7 +153,7 @@ class SourceManager(object):
                                                       Info=Info.encode('utf8')),
                                    ProtocolMajor=ProtocolMajor,
                                    ProtocolMinor=ProtocolMinor,
-                                   SupportedGroups=SupportedGroups | DF_APP2,
+                                   SupportedGroups=SupportedGroups,
                                    Manufacturer=Manufacturer.encode('utf8'),
                                    ProductFamily=ProductFamily.encode('utf8'),
                                    ProductName=ProductName.encode('utf8'))
