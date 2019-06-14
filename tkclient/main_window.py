@@ -73,9 +73,11 @@ class MainWindow:
         self.button43.grid(row=4, column=1, sticky="ew")
         self.button4 = ttk.Button(self.actions_frame, text="4: Negotiate Capabilities", style='Actions.TButton')
         self.button4.grid(row=5, column=0, columnspan=2, sticky="ew")
-        self.button45 = ttk.Button(self.actions_frame, text="4-->5 Enable Source", style='Actions.TButton')
+        self.button45 = ttk.Button(self.actions_frame, text="4-->5 Enable Source", style='Actions.TButton',
+                                   command=self.enable_source)
         self.button45.grid(row=6, column=0, sticky="ew")
-        self.button54 = ttk.Button(self.actions_frame, text="5-->4 Event: Disable Source", style='Actions.TButton')
+        self.button54 = ttk.Button(self.actions_frame, text="5-->4 Event: Disable Source", style='Actions.TButton',
+                                   command=self.disable_source)
         self.button54.grid(row=6, column=1, sticky="ew")
         self.button56 = ttk.Button(self.actions_frame, text="5-->6 Event: Transfer Ready", style='Actions.TButton')
         self.button56.grid(row=7, column=0, sticky="ew")
@@ -166,6 +168,13 @@ class MainWindow:
         self.opened_source = None
         self.set_status(3)
 
+    def enable_source(self):
+        self.source_manager.enable_source()
+        self.set_status(5)
+
+    def disable_source(self):
+        self.source_manager.disable_source()
+        self.set_status(4)
 
 if __name__ == "__main__":
     MainWindow(1000, 500, '../logo.ico', '../logo.gif')

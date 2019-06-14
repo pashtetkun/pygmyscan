@@ -155,13 +155,16 @@ class SourceManager():
             return
 
     def get_sources(self):
+        '''
+        3
+        :return:
+        '''
         sources = []
         source_info = TW_IDENTITY()
         rc = self.dsm_entry(self._app_id, None, DG_CONTROL, DAT_IDENTITY, MSG_GETFIRST, byref(source_info))
         if rc == TWRC_FAILURE:  # 1 error
-            status = TW_STATUS()
-            self.dsm_entry(self._app_id, None, DG_CONTROL, DAT_STATUS, MSG_GET, byref(status))
-            if status.ConditionCode == TWCC_NODS:  # no Sources found
+            cc = self.get_failure_condition_code(None)
+            if cc == TWCC_NODS:  # no Sources found
                 print('not sources!!!')
             return sources
         sources.append((source_info.Id,
@@ -182,6 +185,11 @@ class SourceManager():
         return sources
 
     def open_source(self, source_id):
+        '''
+        3 --> 4 open Source
+        :param source_id:
+        :return:
+        '''
         source_info = self.sources_dict[source_id]
         rc = self.dsm_entry(self._app_id, None, DG_CONTROL, DAT_IDENTITY, MSG_OPENDS, byref(source_info))
         if rc != TWRC_SUCCESS:
@@ -192,11 +200,47 @@ class SourceManager():
         #self.xfer_image_natively()
 
     def close_source(self, source_id):
+        '''
+        4 --> 3 close Source
+        :param source_id:
+        :return:
+        '''
         source_info = self.sources_dict[source_id]
         rc = self.dsm_entry(self._app_id, None, DG_CONTROL, DAT_IDENTITY, MSG_CLOSEDS, byref(source_info))
         if rc != TWRC_SUCCESS:
             return
         self.opened_source = None
+
+    def enable_source(self):
+        '''
+        4 --> 5 enable Source
+        :return:
+        '''
+        ui = TW_USERINTERFACE(ShowUI=False, ModalUI=False, hParent=self._hwnd)
+        rc = self.dsm_entry(self._app_id, self.opened_source, DG_CONTROL, DAT_USERINTERFACE, MSG_ENABLEDS, byref(ui))
+        if rc != TWRC_SUCCESS:
+            return
+        pass
+
+    def disable_source(self):
+        '''
+        5 --> 4 disable Source
+        :return:
+        '''
+        ui = TW_USERINTERFACE(ShowUI=False, ModalUI=False, hParent=self._hwnd)
+        rc = self.dsm_entry(self._app_id, self.opened_source, DG_CONTROL, DAT_USERINTERFACE, MSG_DISABLEDS, byref(ui))
+        if rc == TWRC_SUCCESS:
+            return
+        if rc == TWRC_FAILURE:
+            cc = self.get_failure_condition_code(self.opened_source)
+            if cc == TWCC_SEQERROR:
+                pass
+        pass
+
+    def get_failure_condition_code(self, source):
+        status = TW_STATUS()
+        self.dsm_entry(self._app_id, source, DG_CONTROL, DAT_STATUS, MSG_GET, byref(status))
+        return status.ConditionCode
 
     def xfer_image_natively(self):
         """Perform a 'Native' form transfer of the image.
