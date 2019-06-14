@@ -51,7 +51,16 @@ def func_address(dll_name, function_name):
 
 
 class Application():
-    def __init__(self,
+    def __init__(self, parent_window=None):
+        self._app_id = None
+        self.dll = None
+        self.dsm_entry = None
+        self._parent_window = parent_window
+        self._hwnd = parent_window.winfo_id()
+        self.set_app_info()
+        self.source_manager = None
+
+    def set_app_info(self,
                  MajorNum=1,
                  MinorNum=0,
                  Language=TWLG_USA,
@@ -74,13 +83,11 @@ class Application():
                                    Manufacturer=Manufacturer.encode('utf8'),
                                    ProductFamily=ProductFamily.encode('utf8'),
                                    ProductName=ProductName.encode('utf8'))
-        self.dll = None
-        self.dsm_entry = None
 
     def load_source_manager(self):
         '''
         1 -> 2
-        :return: DSM_Entry
+        :return: Source Manager
         '''
         try:
             self.dll = windll.LoadLibrary('twain_32.dll')
@@ -89,8 +96,17 @@ class Application():
             address = hex(c_void_p.from_buffer(self.dsm_entry).value)
             # address = func_address('twain_32.dll', 'DSM_Entry')
             # p = POINTER(self.dsm_entry)
-            x = byref(self.dsm_entry)
-            return self.dsm_entry
+            # x = byref(self.dsm_entry)
+            self.dsm_entry.restype = c_uint16
+            self.dsm_entry.argtypes = (POINTER(TW_IDENTITY),
+                                       POINTER(TW_IDENTITY),
+                                       c_uint32,
+                                       c_uint16,
+                                       c_uint16,
+                                       c_void_p)
+            #return self.dsm_entry
+            self.source_manager = SourceManager(self)
+            return self.source_manager
         except Exception as e:
             return None
 
@@ -101,6 +117,7 @@ class Application():
         '''
         try:
             del self.dll
+            self.source_manager = None
         except Exception as e:
             print(e)
 
@@ -109,85 +126,35 @@ class SourceManager():
     """
         This object represents Data Source Manager
     """
-    def __init__(self,
-                 parent_window=None,
-                 dll_name=None):
-        self._parent_window = parent_window
-        twain_dll_info = get_twain32_dll()
-        twain_dll = twain_dll_info[1]
-        if not twain_dll:
-            return
+    def __init__(self, application):
 
-        self.dsm_entry = None
-        self._app_id = None
-        self._hwnd = None
+        self._app_id = application._app_id
+        self.dsm_entry = application.dsm_entry
+        self._hwnd = application._hwnd
         self.sources_dict = {}
         self.opened_source = None
 
-        try:
-            #get function DSM_Entry()
-            #self.dsm_entry = twain_dll['DSM_Entry']
-            self.dsm_entry = twain_dll.DSM_Entry
-            address = hex(c_void_p.from_buffer(self.dsm_entry).value)
-            #address = func_address('twain_32.dll', 'DSM_Entry')
-            #p = POINTER(self.dsm_entry)
-            x = byref(self.dsm_entry)
-
-            pass
-        except AttributeError as e:
-            pass
-
-        self.dsm_entry.restype = c_uint16
-        self.dsm_entry.argtypes = (POINTER(TW_IDENTITY),
-                                POINTER(TW_IDENTITY),
-                                c_uint32,
-                                c_uint16,
-                                c_uint16,
-                                c_void_p)
-        self._hwnd = parent_window.winfo_id()
-
-    def set_app_info(self,
-                     MajorNum=1,
-                     MinorNum=0,
-                     Language=TWLG_USA,
-                     Country=TWCY_USA,
-                     Info="",
-                     ProductName="TWAIN Python Interface",
-                     ProtocolMajor=TWON_PROTOCOLMAJOR,
-                     ProtocolMinor=TWON_PROTOCOLMINOR,
-                     SupportedGroups=DG_IMAGE | DG_CONTROL,
-                     Manufacturer="Kevin Gill",
-                     ProductFamily="TWAIN Python Interface"):
-        self._app_id = TW_IDENTITY(Version=TW_VERSION(MajorNum=MajorNum,
-                                                      MinorNum=MinorNum,
-                                                      Language=Language,
-                                                      Country=Country,
-                                                      Info=Info.encode('utf8')),
-                                   ProtocolMajor=ProtocolMajor,
-                                   ProtocolMinor=ProtocolMinor,
-                                   SupportedGroups=SupportedGroups,
-                                   Manufacturer=Manufacturer.encode('utf8'),
-                                   ProductFamily=ProductFamily.encode('utf8'),
-                                   ProductName=ProductName.encode('utf8'))
-
-    def load_dsm(self, dll_name=None):
+    def open(self):
         '''
-        1 -> 2
-        :return: DSM_Entry
+        2 -> 3 Open Source Manager
+        :return:
         '''
-        twain_dll_info = get_twain32_dll()
-        twain_dll = twain_dll_info[1]
-        if not twain_dll:
-            return
-
-    def get_sources(self):
-        # open Data Source Manager(connection)
         returnCode = self.dsm_entry(self._app_id, None, DG_CONTROL, DAT_PARENT, MSG_OPENDSM,
                                     byref(c_void_p(self._hwnd)))
         if returnCode != TWRC_SUCCESS:
             return
 
-        # search sources
+    def close(self):
+        '''
+        3 -> 2 Close Source Manager
+        :return:
+        '''
+        returnCode = self.dsm_entry(self._app_id, None, DG_CONTROL, DAT_PARENT, MSG_CLOSEDSM,
+                                    byref(c_void_p(self._hwnd)))
+        if returnCode != TWRC_SUCCESS:
+            return
+
+    def get_sources(self):
         sources = []
         source_info = TW_IDENTITY()
         rc = self.dsm_entry(self._app_id, None, DG_CONTROL, DAT_IDENTITY, MSG_GETFIRST, byref(source_info))
@@ -222,7 +189,14 @@ class SourceManager():
         self.opened_source = source_info
 
         #get_image
-        self.xfer_image_natively()
+        #self.xfer_image_natively()
+
+    def close_source(self, source_id):
+        source_info = self.sources_dict[source_id]
+        rc = self.dsm_entry(self._app_id, None, DG_CONTROL, DAT_IDENTITY, MSG_CLOSEDS, byref(source_info))
+        if rc != TWRC_SUCCESS:
+            return
+        self.opened_source = None
 
     def xfer_image_natively(self):
         """Perform a 'Native' form transfer of the image.
@@ -248,6 +222,3 @@ class SourceManager():
         if rv == TWRC_CANCEL:
             raise excDSTransferCancelled
         #return hbitmap.value, more
-
-    def close_source(self, source_id):
-        pass
