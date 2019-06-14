@@ -74,6 +74,8 @@ class Application():
                                    Manufacturer=Manufacturer.encode('utf8'),
                                    ProductFamily=ProductFamily.encode('utf8'),
                                    ProductName=ProductName.encode('utf8'))
+        self.dll = None
+        self.dsm_entry = None
 
     def load_source_manager(self):
         '''
@@ -81,16 +83,26 @@ class Application():
         :return: DSM_Entry
         '''
         try:
-            dll = windll.LoadLibrary('twain_32.dll')
+            self.dll = windll.LoadLibrary('twain_32.dll')
             #_GetProcAddress = windll.kernel32.GetProcAddress
-            dsm_entry = dll.DSM_Entry
-            address = hex(c_void_p.from_buffer(dsm_entry).value)
+            self.dsm_entry = self.dll.DSM_Entry
+            address = hex(c_void_p.from_buffer(self.dsm_entry).value)
             # address = func_address('twain_32.dll', 'DSM_Entry')
             # p = POINTER(self.dsm_entry)
-            x = byref(dsm_entry)
-            return dsm_entry
+            x = byref(self.dsm_entry)
+            return self.dsm_entry
         except Exception as e:
             return None
+
+    def unload_source_manager(self):
+        '''
+        2 --> 1
+        :return:
+        '''
+        try:
+            del self.dll
+        except Exception as e:
+            print(e)
 
 
 class SourceManager():
