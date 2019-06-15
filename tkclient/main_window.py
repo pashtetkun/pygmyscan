@@ -35,6 +35,7 @@ class MainWindow:
         self.application = None
         self.source_manager = None
         self.sources = []
+        self.source = None
         self.opened_source = None
 
         self.frame = ttk.Frame()
@@ -159,22 +160,25 @@ class MainWindow:
         if not selection:
             return
         source_id = int(selection[0])
-        self.source_manager.open_source(source_id)
+        self.source = self.source_manager.open_source(source_id)
         self.opened_source = source_id
         self.set_status(4)
 
     def close_source(self):
         self.source_manager.close_source(self.opened_source)
         self.opened_source = None
+        self.source = None
         self.set_status(3)
 
     def enable_source(self):
-        self.source_manager.enable_source()
+        self.source.enable()
+        self.source._modal_loop()
         self.set_status(5)
 
     def disable_source(self):
-        self.source_manager.disable_source()
+        self.source.disable()
         self.set_status(4)
+
 
 if __name__ == "__main__":
     MainWindow(1000, 500, '../logo.ico', '../logo.gif')

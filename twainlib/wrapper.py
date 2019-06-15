@@ -8,48 +8,6 @@ from ctypes import wintypes
 from twainlib.constants import *
 
 
-def check_system():
-    return platform.system()
-
-
-def get_twain32_dll():
-    if check_system() == 'Windows':
-        try:
-            dll_name = 'twain_32.dll'
-            #dll_name = 'TWAINDSM.dll'
-            dll = windll.LoadLibrary(dll_name)
-            _GetProcAddress = windll.kernel32.GetProcAddress
-            return dll_name, dll
-        except WindowsError as e:
-            return 'ошибка', None
-    else:
-        return 'Это не Windows', None
-
-
-def func_address(dll_name, function_name):
-    kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
-    kernel32.GetProcAddress.restype = ctypes.c_void_p
-    kernel32.GetProcAddress.argtypes = (wintypes.HMODULE, wintypes.LPCSTR)
-    LoadLibAddy = kernel32.GetProcAddress(kernel32._handle, b'DSM_Entry')
-
-    _GetModuleHandleA = kernel32.GetModuleHandleA
-    _GetModuleHandleA.restype = POINTER(c_void_p)
-
-    _GetProcAddress = kernel32.GetProcAddress
-    _GetProcAddress.restype = c_void_p
-
-    handle = _GetModuleHandleA(dll_name)
-    if handle is None:
-        print('Error getting handle')
-
-    address = _GetProcAddress(handle, function_name)
-    if address is None:
-        print('Error getting address1')
-
-    windll.kernel32.CloseHandle(handle)
-    return address
-
-
 class Application():
     def __init__(self, parent_window=None):
         self._app_id = None
@@ -188,14 +146,14 @@ class SourceManager():
         '''
         3 --> 4 open Source
         :param source_id:
-        :return:
+        :return: Source
         '''
         source_info = self.sources_dict[source_id]
         rc = self.dsm_entry(self._app_id, None, DG_CONTROL, DAT_IDENTITY, MSG_OPENDS, byref(source_info))
         if rc != TWRC_SUCCESS:
             return
         self.opened_source = source_info
-
+        return Source(self)
         #get_image
         #self.xfer_image_natively()
 
@@ -211,38 +169,84 @@ class SourceManager():
             return
         self.opened_source = None
 
-    def enable_source(self):
-        '''
-        4 --> 5 enable Source
-        :return:
-        '''
-        ui = TW_USERINTERFACE(ShowUI=False, ModalUI=False, hParent=self._hwnd)
-        rc = self.dsm_entry(self._app_id, self.opened_source, DG_CONTROL, DAT_USERINTERFACE, MSG_ENABLEDS, byref(ui))
-        if rc != TWRC_SUCCESS:
-            return
-        pass
-
-    def disable_source(self):
-        '''
-        5 --> 4 disable Source
-        :return:
-        '''
-        ui = TW_USERINTERFACE(ShowUI=False, ModalUI=False, hParent=self._hwnd)
-        rc = self.dsm_entry(self._app_id, self.opened_source, DG_CONTROL, DAT_USERINTERFACE, MSG_DISABLEDS, byref(ui))
-        if rc == TWRC_SUCCESS:
-            return
-        if rc == TWRC_FAILURE:
-            cc = self.get_failure_condition_code(self.opened_source)
-            if cc == TWCC_SEQERROR:
-                pass
-        pass
-
     def get_failure_condition_code(self, source):
         status = TW_STATUS()
         self.dsm_entry(self._app_id, source, DG_CONTROL, DAT_STATUS, MSG_GET, byref(status))
         return status.ConditionCode
 
-    def xfer_image_natively(self):
+
+class Source():
+    def __init__(self, source_manager):
+        self._app_id = source_manager._app_id
+        self.dsm_entry = source_manager.dsm_entry
+        self._hwnd = source_manager._hwnd
+        self._source_id = source_manager.opened_source
+
+    def enable(self):
+        '''
+        4 --> 5 enable Source
+        :return:
+        '''
+        ui = TW_USERINTERFACE(ShowUI=False, ModalUI=False, hParent=self._hwnd)
+        rc = self.dsm_entry(self._app_id, self._source_id, DG_CONTROL, DAT_USERINTERFACE, MSG_ENABLEDS, byref(ui))
+        if rc != TWRC_SUCCESS:
+            return
+
+    def disable(self):
+        '''
+        5 --> 4 disable Source
+        :return:
+        '''
+        ui = TW_USERINTERFACE(ShowUI=False, ModalUI=False, hParent=self._hwnd)
+        rc = self.dsm_entry(self._app_id, self._source_id, DG_CONTROL, DAT_USERINTERFACE, MSG_DISABLEDS, byref(ui))
+        if rc == TWRC_SUCCESS:
+            return
+        if rc == TWRC_FAILURE:
+            cc = self.get_failure_condition_code()
+            if cc == TWCC_SEQERROR:
+                pass
+        pass
+
+    def get_failure_condition_code(self):
+        status = TW_STATUS()
+        self.dsm_entry(self._app_id, self._source_id, DG_CONTROL, DAT_STATUS, MSG_GET, byref(status))
+        return status.ConditionCode
+
+    def _process_event(self, msg_ref):
+        event = TW_EVENT(cast(msg_ref, c_void_p), 0)
+        rv = self.dsm_entry(self._app_id,
+                            self._source_id,
+                            DG_CONTROL,
+                            DAT_EVENT,
+                            MSG_PROCESSEVENT,
+                            byref(event))
+        if event.TWMessage == MSG_XFERREADY:
+            self._state = 'ready'
+        return rv, event.TWMessage
+
+    def _modal_loop(self, callback=None):
+        done = False
+        msg = MSG()
+        while not done:
+            if not _GetMessage(byref(msg), 0, 0, 0):
+                break
+            rc, event = self._process_event(byref(msg))
+            #if callback:
+            self.callback(event)
+            if event in (MSG_XFERREADY, MSG_CLOSEDSREQ):
+                done = True
+            if rc == TWRC_NOTDSEVENT:
+                #_TranslateMessage(byref(msg))
+                #_DispatchMessage(byref(msg))
+                x = 1
+
+    def callback(self, event):
+        if event == MSG_XFERREADY:
+            rv, handle = self.get_native_image()
+            image = _Image(handle)
+            image.save("C:/1/test2.bmp")
+
+    def get_native_image(self):
         """Perform a 'Native' form transfer of the image.
 
         When successful, this routine returns two values,
@@ -257,7 +261,7 @@ class SourceManager():
         Valid states: 6
         """
         hbitmap = c_void_p()
-        rv = self.dsm_entry(self._app_id, self.opened_source, DG_IMAGE,
+        rv = self.dsm_entry(self._app_id, self._source_id, DG_IMAGE,
                         DAT_IMAGENATIVEXFER,
                         MSG_GET,
                         byref(hbitmap))
@@ -265,4 +269,126 @@ class SourceManager():
         #more = self._end_xfer()
         if rv == TWRC_CANCEL:
             raise excDSTransferCancelled
-        #return hbitmap.value, more
+        return rv, hbitmap
+
+def _win_check(result, func, args):
+    if func is _GlobalFree:
+        if result:
+            raise WinError()
+        return None
+    elif func is _GlobalUnlock:
+        if not result and GetLastError() != 0:
+            raise WinError()
+        return result
+    elif func is _GetMessage:
+        if result == -1:
+            raise WinError()
+        return result
+    elif func is _TranslateMessage or func is _DispatchMessage:
+        return result
+    else:
+        if not result:
+            raise WinError()
+        return result
+
+_GetMessage = windll.user32.GetMessageW
+_GetMessage = windll.user32.GetMessageW
+_TranslateMessage = windll.user32.TranslateMessage
+_TranslateMessage.errcheck = _win_check
+_DispatchMessage = windll.user32.DispatchMessageW
+_DispatchMessage.errcheck = _win_check
+
+_GlobalLock = windll.kernel32.GlobalLock
+_GlobalLock.argtypes = [ctypes.c_void_p]
+_GlobalLock.restype = ctypes.c_void_p
+_GlobalLock.errcheck = _win_check
+_GlobalUnlock = windll.kernel32.GlobalUnlock
+_GlobalUnlock.argtypes = [ctypes.c_void_p]
+_GlobalUnlock.errcheck = _win_check
+_GlobalAlloc = windll.kernel32.GlobalAlloc
+_GlobalAlloc.restype = ctypes.c_void_p
+_GlobalAlloc.errcheck = _win_check
+_GlobalFree = windll.kernel32.GlobalFree
+_GlobalFree.argtypes = [ctypes.c_void_p]
+_GlobalFree.errcheck = _win_check
+_GlobalSize = windll.kernel32.GlobalSize
+_GlobalSize.argtypes = [ctypes.c_void_p]
+_GlobalSize.restype = ctypes.c_size_t
+_GlobalSize.errcheck = _win_check
+
+
+class _Image(object):
+    def __init__(self, handle):
+        self._handle = handle
+
+        self._free = _GlobalFree
+        self._lock = _GlobalLock
+        self._unlock = _GlobalUnlock
+
+    def __del__(self):
+        self.close()
+
+    def close(self):
+        """Releases memory of image"""
+        self._free(self._handle)
+        self._handle = None
+
+    def save(self, filepath):
+        """Saves in-memory image to BMP file"""
+        _dib_write(self._handle, filepath, self._lock, self._unlock)
+
+
+class BITMAPINFOHEADER(Structure):
+    _pack_ = 4
+    _fields_ = [('biSize', c_uint32),
+                ('biWidth', c_long),
+                ('biHeight', c_long),
+                ('biPlanes', c_uint16),
+                ('biBitCount', c_uint16),
+                ('biCompression', c_uint32),
+                ('biSizeImage', c_uint32),
+                ('biXPelsPerMeter', c_long),
+                ('biYPelsPerMeter', c_long),
+                ('biClrUsed', c_uint32),
+                ('biClrImportant', c_uint32)]
+
+
+def _dib_write(handle, path, lock, unlock):
+    file_header_size = 14
+    ptr = lock(handle)
+    try:
+        char_ptr = cast(ptr, POINTER(c_char))
+        bih = cast(ptr, POINTER(BITMAPINFOHEADER)).contents
+        if bih.biCompression != 0:
+            msg = 'Cannot handle compressed image. Compression Format %d' % bih.biCompression
+            raise excImageFormat(msg)
+        bits_offset = file_header_size + bih.biSize + bih.biClrUsed * 4
+        if bih.biSizeImage == 0:
+            row_bytes = (((bih.biWidth * bih.biBitCount) + 31) & ~31) // 8
+            bih.biSizeImage = row_bytes * bih.biHeight
+        dib_size = bih.biSize + bih.biClrUsed * 4 + bih.biSizeImage
+        file_size = dib_size + file_header_size
+
+        def _write_bmp(f):
+            import struct
+            f.write(b'BM')
+            f.write(struct.pack('LHHL', file_size, 0, 0, bits_offset))
+            for i in range(dib_size):
+                f.write(char_ptr[i])
+
+        if path:
+            f = open(path, 'wb')
+            try:
+                _write_bmp(f)
+            finally:
+                f.close()
+        else:
+            import io
+            f = io.BytesIO()
+            try:
+                _write_bmp(f)
+                return f.getvalue()
+            finally:
+                f.close()
+    finally:
+        unlock(handle)
