@@ -271,6 +271,7 @@ class Source():
             raise excDSTransferCancelled
         return rv, hbitmap
 
+
 def _win_check(result, func, args):
     if func is _GlobalFree:
         if result:
@@ -291,7 +292,7 @@ def _win_check(result, func, args):
             raise WinError()
         return result
 
-_GetMessage = windll.user32.GetMessageW
+
 _GetMessage = windll.user32.GetMessageW
 _TranslateMessage = windll.user32.TranslateMessage
 _TranslateMessage.errcheck = _win_check
