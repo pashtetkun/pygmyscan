@@ -163,8 +163,9 @@ class SourceManager():
         self.dsm_entry = application.dsm_entry
         self.version = application.dsm_version
         self._hwnd = application._hwnd
-        self.sources_dict = {}
-        self.opened_source = None
+        self.tw_sources_dict = {}
+        self.tw_current_source = None
+        self.sources_info = []
 
     def open(self):
         '''
@@ -191,45 +192,46 @@ class SourceManager():
         3
         :return:
         '''
-        sources = []
-        source_info = TW_IDENTITY()
-        rc = self.dsm_entry(self._tw_app, None, DG_CONTROL, DAT_IDENTITY, MSG_GETFIRST, byref(source_info))
+        tw_source = TW_IDENTITY()
+        rc = self.dsm_entry(self._tw_app, None, DG_CONTROL, DAT_IDENTITY, MSG_GETFIRST, byref(tw_source))
         if rc == TWRC_FAILURE:  # 1 error
             cc = self.get_failure_condition_code(None)
             if cc == TWCC_NODS:  # no Sources found
                 print('not sources!!!')
-            return sources
-        sources.append((source_info.Id,
-                       source_info.ProductName.decode("utf-8"),
-                       str(source_info.ProtocolMajor)+"."+str(source_info.ProtocolMinor)))
-        self.sources_dict[source_info.Id] = source_info
+            return []
+        source_info = SourceInfo(
+                       tw_source.Id,
+                       tw_source.ProductName.decode("utf-8"),
+                       str(tw_source.ProtocolMajor)+"."+str(tw_source.ProtocolMinor))
+        self.sources_info.append(source_info)
+        self.tw_sources_dict[tw_source.Id] = tw_source
 
         while 1:
-            source_info = TW_IDENTITY()
-            rc = self.dsm_entry(self._tw_app, None, DG_CONTROL, DAT_IDENTITY, MSG_GETNEXT, byref(source_info))
+            tw_source = TW_IDENTITY()
+            rc = self.dsm_entry(self._tw_app, None, DG_CONTROL, DAT_IDENTITY, MSG_GETNEXT, byref(tw_source))
             if rc == TWRC_ENDOFLIST:
                 break
-            sources.append((source_info.Id,
-                           source_info.ProductName.decode("utf-8"),
-                           str(source_info.ProtocolMajor) + "." + str(source_info.ProtocolMinor)))
-            self.sources_dict[source_info.Id] = source_info
+            source_info = SourceInfo(
+                tw_source.Id,
+                tw_source.ProductName.decode("utf-8"),
+                str(tw_source.ProtocolMajor) + "." + str(tw_source.ProtocolMinor))
+            self.sources_info.append(source_info)
+            self.tw_sources_dict[tw_source.Id] = tw_source
 
-        return sources
+        return self.sources_info
 
-    def open_source(self, source_id):
+    def open_source(self, source_id, send_message_handler=None):
         '''
         3 --> 4 open Source
         :param source_id:
         :return: Source
         '''
-        source_info = self.sources_dict[source_id]
-        rc = self.dsm_entry(self._tw_app, None, DG_CONTROL, DAT_IDENTITY, MSG_OPENDS, byref(source_info))
+        tw_source = self.tw_sources_dict[source_id]
+        rc = self.dsm_entry(self._tw_app, None, DG_CONTROL, DAT_IDENTITY, MSG_OPENDS, byref(tw_source))
         if rc != TWRC_SUCCESS:
             return
-        self.opened_source = source_info
-        return Source(self)
-        #get_image
-        #self.xfer_image_natively()
+        self.tw_current_source = tw_source
+        return Source(self, send_message_handler)
 
     def close_source(self, source_id):
         '''
@@ -237,24 +239,41 @@ class SourceManager():
         :param source_id:
         :return:
         '''
-        source_info = self.sources_dict[source_id]
-        rc = self.dsm_entry(self._tw_app, None, DG_CONTROL, DAT_IDENTITY, MSG_CLOSEDS, byref(source_info))
+        tw_source = self.tw_sources_dict[source_id]
+        rc = self.dsm_entry(self._tw_app, None, DG_CONTROL, DAT_IDENTITY, MSG_CLOSEDS, byref(tw_source))
         if rc != TWRC_SUCCESS:
             return
-        self.opened_source = None
+        self.tw_current_source = None
 
-    def get_failure_condition_code(self, source):
+    def get_failure_condition_code(self, tw_source):
         status = TW_STATUS()
-        self.dsm_entry(self._tw_app, source, DG_CONTROL, DAT_STATUS, MSG_GET, byref(status))
+        self.dsm_entry(self._tw_app, tw_source, DG_CONTROL, DAT_STATUS, MSG_GET, byref(status))
         return status.ConditionCode
 
 
+class SourceInfo():
+    def __init__(self, id, name, twain):
+        self.id = id
+        self.name = name
+        self.twain = twain
+
+
 class Source():
-    def __init__(self, source_manager):
+    def __init__(self, source_manager, send_message_handler):
         self._tw_app = source_manager._tw_app
         self.dsm_entry = source_manager.dsm_entry
         self._hwnd = source_manager._hwnd
-        self._source_id = source_manager.opened_source
+        self.tw_source = source_manager.tw_current_source
+        self.send_message_handler = send_message_handler
+
+    def get_id(self):
+        return self.tw_source.Id
+
+    def get_name(self):
+        return self.tw_source.ProductName.decode("utf-8")
+
+    def get_twain(self):
+        return str(self.tw_source.ProtocolMajor)+"."+str(self.tw_source.ProtocolMinor)
 
     def enable(self):
         '''
@@ -262,7 +281,7 @@ class Source():
         :return:
         '''
         ui = TW_USERINTERFACE(ShowUI=False, ModalUI=False, hParent=self._hwnd)
-        rc = self.dsm_entry(self._tw_app, self._source_id, DG_CONTROL, DAT_USERINTERFACE, MSG_ENABLEDS, byref(ui))
+        rc = self.dsm_entry(self._tw_app, self.tw_source, DG_CONTROL, DAT_USERINTERFACE, MSG_ENABLEDS, byref(ui))
         if rc != TWRC_SUCCESS:
             return
 
@@ -272,7 +291,7 @@ class Source():
         :return:
         '''
         ui = TW_USERINTERFACE(ShowUI=False, ModalUI=False, hParent=self._hwnd)
-        rc = self.dsm_entry(self._tw_app, self._source_id, DG_CONTROL, DAT_USERINTERFACE, MSG_DISABLEDS, byref(ui))
+        rc = self.dsm_entry(self._tw_app, self.tw_source, DG_CONTROL, DAT_USERINTERFACE, MSG_DISABLEDS, byref(ui))
         if rc == TWRC_SUCCESS:
             return
         if rc == TWRC_FAILURE:
@@ -283,13 +302,20 @@ class Source():
 
     def get_failure_condition_code(self):
         status = TW_STATUS()
-        self.dsm_entry(self._tw_app, self._source_id, DG_CONTROL, DAT_STATUS, MSG_GET, byref(status))
+        self.dsm_entry(self._tw_app, self.tw_source, DG_CONTROL, DAT_STATUS, MSG_GET, byref(status))
         return status.ConditionCode
+
+    def scan(self):
+        if self.send_message_handler:
+            self.send_message_handler.__call__("Start scanning")
+            self.send_message_handler.__call__("Start loop")
+        self.enable()
+        self._modal_loop()
 
     def _process_event(self, msg_ref):
         event = TW_EVENT(cast(msg_ref, c_void_p), 0)
         rv = self.dsm_entry(self._tw_app,
-                            self._source_id,
+                            self.tw_source,
                             DG_CONTROL,
                             DAT_EVENT,
                             MSG_PROCESSEVENT,
@@ -335,10 +361,10 @@ class Source():
         Valid states: 6
         """
         hbitmap = c_void_p()
-        rv = self.dsm_entry(self._tw_app, self._source_id, DG_IMAGE,
-                        DAT_IMAGENATIVEXFER,
-                        MSG_GET,
-                        byref(hbitmap))
+        rv = self.dsm_entry(self._tw_app, self.tw_source, DG_IMAGE,
+                            DAT_IMAGENATIVEXFER,
+                            MSG_GET,
+                            byref(hbitmap))
         #rv, hbitmap = self._get_native_image()
         #more = self._end_xfer()
         if rv == TWRC_CANCEL:

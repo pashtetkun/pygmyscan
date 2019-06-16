@@ -36,9 +36,8 @@ class MainWindow:
 
         self.application = twainlib.wrapper.Application(self.root)
         self.source_manager = None
-        self.sources = []
-        self.source = None
-        self.opened_source = None
+        self.sources_info = []
+        self.current_source = None
 
         self.top_frame = ttk.Frame(self.root)
         self.top_frame.grid(row=0, column=0, columnspan=2, sticky="w")
@@ -50,7 +49,7 @@ class MainWindow:
         self.dsm_status = ttk.Label(self.top_frame, textvariable=self.var_dsm_status, relief="sunken", width=40)
         self.dsm_status.grid(row=0, column=1, sticky="w")
         self.var_source_status = tkinter.StringVar()
-        self.source_status = ttk.Label(self.top_frame, textvariable=self.var_source_status, relief="sunken", width=30)
+        self.source_status = ttk.Label(self.top_frame, textvariable=self.var_source_status, relief="sunken", width=60)
         self.source_status.grid(row=0, column=2, sticky="w")
         self.top_frame.columnconfigure(0, pad=10, minsize=300)
         self.top_frame.columnconfigure(1, pad=10, minsize=300)
@@ -81,6 +80,7 @@ class MainWindow:
         self.button43.grid(row=3, column=1, sticky="ew")
         self.button4 = ttk.Button(self.left_frame, text="4: Negotiate Capabilities", style='Actions.TButton')
         self.button4.grid(row=4, column=0, columnspan=2, sticky="ew")
+        '''
         self.button45 = ttk.Button(self.left_frame, text="4-->5 Enable Source", style='Actions.TButton',
                                    command=self.enable_source)
         self.button45.grid(row=5, column=0, sticky="ew")
@@ -88,6 +88,7 @@ class MainWindow:
                                    command=self.disable_source)
         self.button54.grid(row=5, column=1, sticky="ew")
         self.button56 = ttk.Button(self.left_frame, text="5-->6 Event: Transfer Ready", style='Actions.TButton')
+        
         self.button56.grid(row=6, column=0, sticky="ew")
         self.button65 = ttk.Button(self.left_frame, text="6-->5 Event: No more image for transfer",
                                    style='Actions.TButton')
@@ -96,6 +97,9 @@ class MainWindow:
         self.button67.grid(row=7, column=0, sticky="ew")
         self.button76 = ttk.Button(self.left_frame, text="7-->6 End of Transfer", style='Actions.TButton')
         self.button76.grid(row=7, column=1, sticky="ew")
+        '''
+        self.button_scan = ttk.Button(self.left_frame, text="4--> Scan", style='Actions.TButton', command=self.scan)
+        self.button_scan.grid(row=5, column=0, columnspan=2, sticky="ew")
 
         self.right_frame = ttk.Frame(self.root)
         self.right_frame.grid(row=1, column=1, sticky="w")
@@ -132,12 +136,13 @@ class MainWindow:
         self.button34["state"] = "disabled"
         self.button43["state"] = "disabled"
         self.button4["state"] = "disabled"
-        self.button45["state"] = "disabled"
-        self.button54["state"] = "disabled"
-        self.button56["state"] = "disabled"
-        self.button65["state"] = "disabled"
-        self.button67["state"] = "disabled"
-        self.button76["state"] = "disabled"
+        #self.button45["state"] = "disabled"
+        #self.button54["state"] = "disabled"
+        #self.button56["state"] = "disabled"
+        #self.button65["state"] = "disabled"
+        #self.button67["state"] = "disabled"
+        #self.button76["state"] = "disabled"
+        self.button_scan["state"] = "disabled"
         if num == 1:
             self.button12["state"] = "enable"
         if num == 2:
@@ -150,7 +155,8 @@ class MainWindow:
         if num == 4:
             self.button43["state"] = "enable"
             #self.button4["state"] = "enable"
-            self.button45["state"] = "enable"
+            #self.button45["state"] = "enable"
+            self.button_scan["state"] = "enable"
         if num == 5:
             #self.button54["state"] = "enable"
             #self.button56["state"] = "enable"
@@ -173,9 +179,9 @@ class MainWindow:
             self.var_dsm_status.set("Data Source Manager (%s) is opened" % self.source_manager.version)
             self.var_source_status.set("")
         if num == 4:
-            self.var_source_status.set("Source is opened")
+            self.var_source_status.set("Source (%s) is opened" % self.current_source.get_name())
         if num == 5:
-            self.var_source_status.set("Source is enabled")
+            self.var_source_status.set("Source (%s) is enabled" % self.current_source.get_name())
         self.var_tw_status.set("TWAIN Session Status - " + STATES.get(num))
 
     def load_source_manager(self):
@@ -197,15 +203,17 @@ class MainWindow:
         self.source_manager.close()
         self.set_statuses(2)
         self.insert_text("Data Source Manager (%s) is closed" % self.source_manager.version)
+        self.table_sources.grid_remove()
 
     def get_sources(self):
         self.table_sources.grid()
-        self.sources = self.source_manager.get_sources()
-        for row in self.table_sources.get_children():
-            self.table_sources.delete(row)
-        for source in self.sources:
-            self.table_sources.insert('', 'end', iid=source[0], values=(source[1], source[2]))
-        self.insert_text("Sources are searched")
+        if not self.sources_info:
+            self.sources_info = self.source_manager.get_sources()
+            for row in self.table_sources.get_children():
+                self.table_sources.delete(row)
+            for source in self.sources_info:
+                self.table_sources.insert('', 'end', iid=source.id, values=(source.name, source.twain))
+            self.insert_text("Sources are searched")
 
     def open_source(self):
         selection = self.table_sources.selection()
@@ -213,29 +221,40 @@ class MainWindow:
             self.insert_text("Source is not selected")
             return
         source_id = int(selection[0])
-        self.source = self.source_manager.open_source(source_id)
-        self.opened_source = source_id
+        self.current_source = self.source_manager.open_source(source_id, send_message_handler=self.insert_text)
         self.set_statuses(4)
-        self.insert_text("Source is opened")
+        text = "Source (%s) is opened" % self.current_source.get_name()
+        self.insert_text(text)
+        self.var_source_status.set(text)
+        self.table_sources.grid_remove()
 
     def close_source(self):
-        self.source_manager.close_source(self.opened_source)
-        self.opened_source = None
-        self.source = None
+        self.source_manager.close_source(self.current_source.get_id())
         self.set_statuses(3)
-        self.insert_text("Source is closed")
+        text = "Source (%s) is closed" % self.current_source.get_name()
+        self.insert_text(text)
+        self.var_source_status.set("")
+        self.current_source = None
+        self.table_sources.grid()
 
     def enable_source(self):
-        self.source.enable()
-        self.insert_text("Source is enabled")
-        self.source._modal_loop()
-        self.insert_text("Start loop")
+        self.current_source.enable()
+        text = "Source (%s) is enabled" % self.current_source.get_name()
+        self.insert_text(text)
+        self.var_source_status.set(text)
+        #self.current_source._modal_loop()
+        #self.insert_text("Start loop")
         self.set_statuses(5)
 
     def disable_source(self):
-        self.source.disable()
+        self.current_source.disable()
         self.set_statuses(4)
-        self.insert_text("Source is disabled")
+        text = "Source (%s) is disabled" % self.current_source.get_name()
+        self.insert_text(text)
+        self.var_source_status.set(text)
+
+    def scan(self):
+        self.current_source.scan()
 
     def insert_text(self, text):
         var_datetime = datetime.now().strftime('%Y-%m-%d %H:%M:%S ')
