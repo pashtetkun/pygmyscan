@@ -6,11 +6,14 @@ import ctypes
 from ctypes import *
 from ctypes import wintypes
 from twainlib.constants import *
+#from pywin32 import GetFileVersionInfo, LOWORD, HIWORD
+#from win32.win32api import GetFileVersionInfo
+#from win32.win32api import
 
 
 class Application():
     def __init__(self, parent_window=None):
-        self._app_id = None
+        self._tw_app = None
         self.dll = None
         self.dsm_entry = None
         self._parent_window = parent_window
@@ -30,7 +33,7 @@ class Application():
                  SupportedGroups=DG_IMAGE | DG_CONTROL,
                  Manufacturer="Tsibizov Pavel",
                  ProductFamily="TWAIN Python Interface"):
-        self._app_id = TW_IDENTITY(Version=TW_VERSION(MajorNum=MajorNum,
+        self._tw_app = TW_IDENTITY(Version=TW_VERSION(MajorNum=MajorNum,
                                                       MinorNum=MinorNum,
                                                       Language=Language,
                                                       Country=Country,
@@ -49,7 +52,7 @@ class Application():
         '''
         try:
             self.dll = windll.LoadLibrary('twain_32.dll')
-            #_GetProcAddress = windll.kernel32.GetProcAddress
+            self.dsm_version = self.get_file_version('twain_32.dll', "FileVersion")
             self.dsm_entry = self.dll.DSM_Entry
             address = hex(c_void_p.from_buffer(self.dsm_entry).value)
             # address = func_address('twain_32.dll', 'DSM_Entry')
@@ -62,7 +65,6 @@ class Application():
                                        c_uint16,
                                        c_uint16,
                                        c_void_p)
-            #return self.dsm_entry
             self.source_manager = SourceManager(self)
             return self.source_manager
         except Exception as e:
@@ -79,6 +81,77 @@ class Application():
         except Exception as e:
             print(e)
 
+    # returns the requested version information from the given file
+    #
+    # `language` should be an 8-character string combining both the language and
+    # codepage (such as "040904b0"); if None, the first language in the translation
+    # table is used instead
+    #
+    def get_file_version(self, filename, what, language=None):
+        # VerQueryValue() returns an array of that for VarFileInfo\Translation
+        #
+        class LANGANDCODEPAGE(Structure):
+            _fields_ = [
+                ("wLanguage", c_uint16),
+                ("wCodePage", c_uint16)]
+
+        wstr_file = wstring_at(filename)
+
+        # getting the size in bytes of the file version info buffer
+        size = windll.version.GetFileVersionInfoSizeW(wstr_file, None)
+        if size == 0:
+            raise WinError()
+
+        buffer = create_string_buffer(size)
+
+        # getting the file version info data
+        if windll.version.GetFileVersionInfoW(wstr_file, None, size, buffer) == 0:
+            raise WinError()
+
+        # VerQueryValue() wants a pointer to a void* and DWORD; used both for
+        # getting the default language (if necessary) and getting the actual data
+        # below
+        value = c_void_p(0)
+        value_size = c_uint(0)
+
+        if language is None:
+            # file version information can contain much more than the version
+            # number (copyright, application name, etc.) and these are all
+            # translatable
+            #
+            # the following arbitrarily gets the first language and codepage from
+            # the list
+            ret = windll.version.VerQueryValueW(
+                buffer, wstring_at(r"\VarFileInfo\Translation"),
+                byref(value), byref(value_size))
+
+            if ret == 0:
+                raise WinError()
+
+            # value points to a byte inside buffer, value_size is the size in bytes
+            # of that particular section
+
+            # casting the void* to a LANGANDCODEPAGE*
+            lcp = cast(value, POINTER(LANGANDCODEPAGE))
+
+            # formatting language and codepage to something like "040904b0"
+            language = "{0:04x}{1:04x}".format(
+                lcp.contents.wLanguage, lcp.contents.wCodePage)
+
+        # getting the actual data
+        res = windll.version.VerQueryValueW(
+            buffer, wstring_at("\\StringFileInfo\\" + language + "\\" + what),
+            byref(value), byref(value_size))
+
+        if res == 0:
+            raise WinError()
+
+        # value points to a string of value_size characters, minus one for the
+        # terminating null
+        version = wstring_at(value.value, value_size.value - 1)
+        version = version.replace(",",".")
+        return version
+
 
 class SourceManager():
     """
@@ -86,8 +159,9 @@ class SourceManager():
     """
     def __init__(self, application):
 
-        self._app_id = application._app_id
+        self._tw_app = application._tw_app
         self.dsm_entry = application.dsm_entry
+        self.version = application.dsm_version
         self._hwnd = application._hwnd
         self.sources_dict = {}
         self.opened_source = None
@@ -97,7 +171,7 @@ class SourceManager():
         2 -> 3 Open Source Manager
         :return:
         '''
-        returnCode = self.dsm_entry(self._app_id, None, DG_CONTROL, DAT_PARENT, MSG_OPENDSM,
+        returnCode = self.dsm_entry(self._tw_app, None, DG_CONTROL, DAT_PARENT, MSG_OPENDSM,
                                     byref(c_void_p(self._hwnd)))
         if returnCode != TWRC_SUCCESS:
             return
@@ -107,7 +181,7 @@ class SourceManager():
         3 -> 2 Close Source Manager
         :return:
         '''
-        returnCode = self.dsm_entry(self._app_id, None, DG_CONTROL, DAT_PARENT, MSG_CLOSEDSM,
+        returnCode = self.dsm_entry(self._tw_app, None, DG_CONTROL, DAT_PARENT, MSG_CLOSEDSM,
                                     byref(c_void_p(self._hwnd)))
         if returnCode != TWRC_SUCCESS:
             return
@@ -119,7 +193,7 @@ class SourceManager():
         '''
         sources = []
         source_info = TW_IDENTITY()
-        rc = self.dsm_entry(self._app_id, None, DG_CONTROL, DAT_IDENTITY, MSG_GETFIRST, byref(source_info))
+        rc = self.dsm_entry(self._tw_app, None, DG_CONTROL, DAT_IDENTITY, MSG_GETFIRST, byref(source_info))
         if rc == TWRC_FAILURE:  # 1 error
             cc = self.get_failure_condition_code(None)
             if cc == TWCC_NODS:  # no Sources found
@@ -132,7 +206,7 @@ class SourceManager():
 
         while 1:
             source_info = TW_IDENTITY()
-            rc = self.dsm_entry(self._app_id, None, DG_CONTROL, DAT_IDENTITY, MSG_GETNEXT, byref(source_info))
+            rc = self.dsm_entry(self._tw_app, None, DG_CONTROL, DAT_IDENTITY, MSG_GETNEXT, byref(source_info))
             if rc == TWRC_ENDOFLIST:
                 break
             sources.append((source_info.Id,
@@ -149,7 +223,7 @@ class SourceManager():
         :return: Source
         '''
         source_info = self.sources_dict[source_id]
-        rc = self.dsm_entry(self._app_id, None, DG_CONTROL, DAT_IDENTITY, MSG_OPENDS, byref(source_info))
+        rc = self.dsm_entry(self._tw_app, None, DG_CONTROL, DAT_IDENTITY, MSG_OPENDS, byref(source_info))
         if rc != TWRC_SUCCESS:
             return
         self.opened_source = source_info
@@ -164,20 +238,20 @@ class SourceManager():
         :return:
         '''
         source_info = self.sources_dict[source_id]
-        rc = self.dsm_entry(self._app_id, None, DG_CONTROL, DAT_IDENTITY, MSG_CLOSEDS, byref(source_info))
+        rc = self.dsm_entry(self._tw_app, None, DG_CONTROL, DAT_IDENTITY, MSG_CLOSEDS, byref(source_info))
         if rc != TWRC_SUCCESS:
             return
         self.opened_source = None
 
     def get_failure_condition_code(self, source):
         status = TW_STATUS()
-        self.dsm_entry(self._app_id, source, DG_CONTROL, DAT_STATUS, MSG_GET, byref(status))
+        self.dsm_entry(self._tw_app, source, DG_CONTROL, DAT_STATUS, MSG_GET, byref(status))
         return status.ConditionCode
 
 
 class Source():
     def __init__(self, source_manager):
-        self._app_id = source_manager._app_id
+        self._tw_app = source_manager._tw_app
         self.dsm_entry = source_manager.dsm_entry
         self._hwnd = source_manager._hwnd
         self._source_id = source_manager.opened_source
@@ -188,7 +262,7 @@ class Source():
         :return:
         '''
         ui = TW_USERINTERFACE(ShowUI=False, ModalUI=False, hParent=self._hwnd)
-        rc = self.dsm_entry(self._app_id, self._source_id, DG_CONTROL, DAT_USERINTERFACE, MSG_ENABLEDS, byref(ui))
+        rc = self.dsm_entry(self._tw_app, self._source_id, DG_CONTROL, DAT_USERINTERFACE, MSG_ENABLEDS, byref(ui))
         if rc != TWRC_SUCCESS:
             return
 
@@ -198,7 +272,7 @@ class Source():
         :return:
         '''
         ui = TW_USERINTERFACE(ShowUI=False, ModalUI=False, hParent=self._hwnd)
-        rc = self.dsm_entry(self._app_id, self._source_id, DG_CONTROL, DAT_USERINTERFACE, MSG_DISABLEDS, byref(ui))
+        rc = self.dsm_entry(self._tw_app, self._source_id, DG_CONTROL, DAT_USERINTERFACE, MSG_DISABLEDS, byref(ui))
         if rc == TWRC_SUCCESS:
             return
         if rc == TWRC_FAILURE:
@@ -209,12 +283,12 @@ class Source():
 
     def get_failure_condition_code(self):
         status = TW_STATUS()
-        self.dsm_entry(self._app_id, self._source_id, DG_CONTROL, DAT_STATUS, MSG_GET, byref(status))
+        self.dsm_entry(self._tw_app, self._source_id, DG_CONTROL, DAT_STATUS, MSG_GET, byref(status))
         return status.ConditionCode
 
     def _process_event(self, msg_ref):
         event = TW_EVENT(cast(msg_ref, c_void_p), 0)
-        rv = self.dsm_entry(self._app_id,
+        rv = self.dsm_entry(self._tw_app,
                             self._source_id,
                             DG_CONTROL,
                             DAT_EVENT,
@@ -261,7 +335,7 @@ class Source():
         Valid states: 6
         """
         hbitmap = c_void_p()
-        rv = self.dsm_entry(self._app_id, self._source_id, DG_IMAGE,
+        rv = self.dsm_entry(self._tw_app, self._source_id, DG_IMAGE,
                         DAT_IMAGENATIVEXFER,
                         MSG_GET,
                         byref(hbitmap))

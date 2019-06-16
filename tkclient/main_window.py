@@ -34,7 +34,7 @@ class MainWindow:
         self.root.resizable(width=False, height=False)
         #self.root.iconbitmap(icon_path)
 
-        self.application = None
+        self.application = twainlib.wrapper.Application(self.root)
         self.source_manager = None
         self.sources = []
         self.source = None
@@ -47,7 +47,7 @@ class MainWindow:
                                    width=50)
         self.tw_status.grid(row=0, column=0, sticky="w")
         self.var_dsm_status = tkinter.StringVar()
-        self.dsm_status = ttk.Label(self.top_frame, textvariable=self.var_dsm_status, relief="sunken", width=30)
+        self.dsm_status = ttk.Label(self.top_frame, textvariable=self.var_dsm_status, relief="sunken", width=40)
         self.dsm_status.grid(row=0, column=1, sticky="w")
         self.var_source_status = tkinter.StringVar()
         self.source_status = ttk.Label(self.top_frame, textvariable=self.var_source_status, relief="sunken", width=30)
@@ -70,8 +70,8 @@ class MainWindow:
         self.button32 = ttk.Button(self.left_frame, text="3-->2 Close Source Manager", style='Actions.TButton',
                                    command=self.close_source_manager)
         self.button32.grid(row=1, column=1, sticky="ew")
-        self.button3 = ttk.Button(self.left_frame, text="3: Select Source", style='Actions.TButton',
-                                  command=self.select_source)
+        self.button3 = ttk.Button(self.left_frame, text="3: Get Sources", style='Actions.TButton',
+                                  command=self.get_sources)
         self.button3.grid(row=2, column=0, columnspan=2, sticky="ew")
         self.button34 = ttk.Button(self.left_frame, text="3-->4 Open Source", style='Actions.TButton',
                                    command=self.open_source)
@@ -98,11 +98,14 @@ class MainWindow:
         self.button76.grid(row=7, column=1, sticky="ew")
 
         self.right_frame = ttk.Frame(self.root)
-        self.right_frame.grid(row=1, column=1, sticky="ew")
+        self.right_frame.grid(row=1, column=1, sticky="w")
 
-        self.table_sources = ttk.Treeview(self.right_frame, columns=("model", "twain"),show="headings", selectmode="browse")
+        self.table_sources = ttk.Treeview(self.right_frame, columns=("model", "twain"),show="headings",
+                                          selectmode="browse")
         self.table_sources.heading("model", text="Модель")
         self.table_sources.heading("twain", text="twain")
+        self.table_sources.column("model", width=300)
+        self.table_sources.column("twain", width=50)
         self.table_sources.grid(row=0, column=0, sticky="ew")
         self.table_sources.grid_remove()
 
@@ -116,6 +119,8 @@ class MainWindow:
         self.root.rowconfigure(0, pad=10)
         self.root.rowconfigure(1, pad=10)
         self.root.rowconfigure(2, pad=10)
+        #self.root.columnconfigure(0, minsize=10)
+        #self.root.columnconfigure(1, minsize=300)
         self.root.mainloop()
 
     def set_statuses(self, num):
@@ -144,25 +149,28 @@ class MainWindow:
             self.button34["state"] = "enable"
         if num == 4:
             self.button43["state"] = "enable"
-            self.button4["state"] = "enable"
+            #self.button4["state"] = "enable"
             self.button45["state"] = "enable"
         if num == 5:
-            self.button54["state"] = "enable"
-            self.button56["state"] = "enable"
+            #self.button54["state"] = "enable"
+            #self.button56["state"] = "enable"
+            pass
         if num == 6:
-            self.button65["state"] = "enable"
-            self.button67["state"] = "enable"
+            #self.button65["state"] = "enable"
+            #self.button67["state"] = "enable"
+            pass
         if num == 7:
-            self.button76["state"] = "enable"
+            #self.button76["state"] = "enable"
+            pass
 
         if num == 1:
             self.var_dsm_status.set("")
             self.var_source_status.set("")
         if num == 2:
-            self.var_dsm_status.set("Data Source Manager is loaded")
+            self.var_dsm_status.set("Data Source Manager (%s) is loaded" % self.source_manager.version)
             self.var_source_status.set("")
         if num == 3:
-            self.var_dsm_status.set("Data Source Manager is opened")
+            self.var_dsm_status.set("Data Source Manager (%s) is opened" % self.source_manager.version)
             self.var_source_status.set("")
         if num == 4:
             self.var_source_status.set("Source is opened")
@@ -171,27 +179,26 @@ class MainWindow:
         self.var_tw_status.set("TWAIN Session Status - " + STATES.get(num))
 
     def load_source_manager(self):
-        self.application = twainlib.wrapper.Application(self.root)
         self.source_manager = self.application.load_source_manager()
         self.set_statuses(2)
-        self.insert_text("Data Source Manager is loaded")
+        self.insert_text("Data Source Manager (%s) is loaded" % self.source_manager.version)
 
     def unload_source_manager(self):
         self.application.unload_source_manager()
         self.set_statuses(1)
-        self.insert_text("Data Source Manager is unloaded")
+        self.insert_text("Data Source Manager (%s) is unloaded" % self.source_manager.version)
 
     def open_source_manager(self):
         self.source_manager.open()
         self.set_statuses(3)
-        self.insert_text("Data Source Manager is opened")
+        self.insert_text("Data Source Manager (%s) is opened" % self.source_manager.version)
 
     def close_source_manager(self):
         self.source_manager.close()
         self.set_statuses(2)
-        self.insert_text("Data Source Manager is closed")
+        self.insert_text("Data Source Manager (%s) is closed" % self.source_manager.version)
 
-    def select_source(self):
+    def get_sources(self):
         self.table_sources.grid()
         self.sources = self.source_manager.get_sources()
         for row in self.table_sources.get_children():
@@ -203,6 +210,7 @@ class MainWindow:
     def open_source(self):
         selection = self.table_sources.selection()
         if not selection:
+            self.insert_text("Source is not selected")
             return
         source_id = int(selection[0])
         self.source = self.source_manager.open_source(source_id)
