@@ -34,7 +34,7 @@ class MainWindow:
         self.root.resizable(width=False, height=False)
         #self.root.iconbitmap(icon_path)
 
-        self.application = twainlib.wrapper.Application(self.root)
+        self.application = twainlib.wrapper.Application(self.root, self.insert_text)
         self.source_manager = None
         self.sources_info = []
         self.current_source = None
@@ -108,9 +108,10 @@ class MainWindow:
                                           selectmode="browse")
         self.table_sources.heading("model", text="Модель")
         self.table_sources.heading("twain", text="twain")
-        self.table_sources.column("model", width=300)
+        self.table_sources.column("model", width=600)
         self.table_sources.column("twain", width=50)
         self.table_sources.grid(row=0, column=0, sticky="ew")
+        self.table_sources.config(height=6)
         self.table_sources.grid_remove()
 
         self.bottom_frame = ttk.Frame(self.root)
@@ -187,22 +188,18 @@ class MainWindow:
     def load_source_manager(self):
         self.source_manager = self.application.load_source_manager()
         self.set_statuses(2)
-        self.insert_text("Data Source Manager (%s) is loaded" % self.source_manager.version)
 
     def unload_source_manager(self):
         self.application.unload_source_manager()
         self.set_statuses(1)
-        self.insert_text("Data Source Manager (%s) is unloaded" % self.source_manager.version)
 
     def open_source_manager(self):
         self.source_manager.open()
         self.set_statuses(3)
-        self.insert_text("Data Source Manager (%s) is opened" % self.source_manager.version)
 
     def close_source_manager(self):
         self.source_manager.close()
         self.set_statuses(2)
-        self.insert_text("Data Source Manager (%s) is closed" % self.source_manager.version)
         self.table_sources.grid_remove()
 
     def get_sources(self):
@@ -213,7 +210,6 @@ class MainWindow:
                 self.table_sources.delete(row)
             for source in self.sources_info:
                 self.table_sources.insert('', 'end', iid=source.id, values=(source.name, source.twain))
-            self.insert_text("Sources are searched")
 
     def open_source(self):
         selection = self.table_sources.selection()
@@ -221,10 +217,9 @@ class MainWindow:
             self.insert_text("Source is not selected")
             return
         source_id = int(selection[0])
-        self.current_source = self.source_manager.open_source(source_id, send_message_handler=self.insert_text)
+        self.current_source = self.source_manager.open_source(source_id)
         self.set_statuses(4)
         text = "Source (%s) is opened" % self.current_source.get_name()
-        self.insert_text(text)
         self.var_source_status.set(text)
         self.table_sources.grid_remove()
 
@@ -232,11 +227,11 @@ class MainWindow:
         self.source_manager.close_source(self.current_source.get_id())
         self.set_statuses(3)
         text = "Source (%s) is closed" % self.current_source.get_name()
-        self.insert_text(text)
         self.var_source_status.set("")
         self.current_source = None
         self.table_sources.grid()
 
+    '''
     def enable_source(self):
         self.current_source.enable()
         text = "Source (%s) is enabled" % self.current_source.get_name()
@@ -252,6 +247,7 @@ class MainWindow:
         text = "Source (%s) is disabled" % self.current_source.get_name()
         self.insert_text(text)
         self.var_source_status.set(text)
+    '''
 
     def scan(self):
         self.current_source.scan()

@@ -12,12 +12,13 @@ from twainlib.constants import *
 
 
 class Application():
-    def __init__(self, parent_window=None):
+    def __init__(self, parent_window=None, send_message_callback = None):
         self._tw_app = None
         self.dll = None
         self.dsm_entry = None
         self._parent_window = parent_window
         self._hwnd = parent_window.winfo_id()
+        self.send_message_callback = send_message_callback
         self.set_app_info()
         self.source_manager = None
 
@@ -50,6 +51,8 @@ class Application():
         1 -> 2
         :return: Source Manager
         '''
+        if self.send_message_callback:
+            self.send_message_callback.__call__("Data Source Manager starts loading")
         try:
             self.dll = windll.LoadLibrary('twain_32.dll')
             self.dsm_version = self.get_file_version('twain_32.dll', "FileVersion")
@@ -66,8 +69,12 @@ class Application():
                                        c_uint16,
                                        c_void_p)
             self.source_manager = SourceManager(self)
+            if self.send_message_callback:
+                self.send_message_callback.__call__("Data Source Manager (%s) is loaded" % self.source_manager.version)
             return self.source_manager
         except Exception as e:
+            if self.send_message_callback:
+                self.send_message_callback.__call__("APPLICATION EXCEPTION: " + str(e))
             return None
 
     def unload_source_manager(self):
@@ -75,11 +82,17 @@ class Application():
         2 --> 1
         :return:
         '''
+        version = self.source_manager.version
+        if self.send_message_callback:
+            self.send_message_callback.__call__("Data Source Manager (%s) starts unloading" % version)
         try:
             del self.dll
             self.source_manager = None
+            if self.send_message_callback:
+                self.send_message_callback("Data Source Manager (%s) is unloaded" % version)
         except Exception as e:
-            print(e)
+            if self.send_message_callback:
+                self.send_message_callback.__call__("APPLICATION EXCEPTION: " + str(e))
 
     # returns the requested version information from the given file
     #
@@ -163,6 +176,7 @@ class SourceManager():
         self.dsm_entry = application.dsm_entry
         self.version = application.dsm_version
         self._hwnd = application._hwnd
+        self.send_message_callback = application.send_message_callback
         self.tw_sources_dict = {}
         self.tw_current_source = None
         self.sources_info = []
@@ -172,66 +186,120 @@ class SourceManager():
         2 -> 3 Open Source Manager
         :return:
         '''
-        returnCode = self.dsm_entry(self._tw_app, None, DG_CONTROL, DAT_PARENT, MSG_OPENDSM,
+        if self.send_message_callback:
+            self.send_message_callback.__call__("Data Source Manager (%s) starts opening" % self.version)
+        try:
+            rc = self.dsm_entry(self._tw_app, None, DG_CONTROL, DAT_PARENT, MSG_OPENDSM,
                                     byref(c_void_p(self._hwnd)))
-        if returnCode != TWRC_SUCCESS:
-            return
+            if rc == TWRC_SUCCESS:
+                if self.send_message_callback:
+                    self.send_message_callback("(TWRC_SUCCESS=0) Data Source Manager (%s) is opened" % self.version)
+            else:
+                if self.send_message_callback:
+                    self.send_message_callback("(TWRC=%d) Data Source Manager (%s) is not opened" % (rc, self.version))
+
+        except Exception as e:
+            if self.send_message_callback:
+                self.send_message_callback.__call__("APPLICATION EXCEPTION: " + str(e))
 
     def close(self):
         '''
         3 -> 2 Close Source Manager
         :return:
         '''
-        returnCode = self.dsm_entry(self._tw_app, None, DG_CONTROL, DAT_PARENT, MSG_CLOSEDSM,
+        if self.send_message_callback:
+            self.send_message_callback.__call__("Data Source Manager (%s) starts closing" % self.version)
+        try:
+            rc = self.dsm_entry(self._tw_app, None, DG_CONTROL, DAT_PARENT, MSG_CLOSEDSM,
                                     byref(c_void_p(self._hwnd)))
-        if returnCode != TWRC_SUCCESS:
-            return
+            if rc == TWRC_SUCCESS:
+                if self.send_message_callback:
+                    self.send_message_callback("(TWRC_SUCCESS=0) Data Source Manager (%s) is closed" % (self.version))
+            else:
+                if self.send_message_callback:
+                    self.send_message_callback("(TWRC=%d) Data Source Manager (%s) is not closed" % (rc, self.version))
+        except Exception as e:
+            if self.send_message_callback:
+                self.send_message_callback.__call__("APPLICATION EXCEPTION: " + str(e))
 
     def get_sources(self):
         '''
         3
         :return:
         '''
-        tw_source = TW_IDENTITY()
-        rc = self.dsm_entry(self._tw_app, None, DG_CONTROL, DAT_IDENTITY, MSG_GETFIRST, byref(tw_source))
-        if rc == TWRC_FAILURE:  # 1 error
-            cc = self.get_failure_condition_code(None)
-            if cc == TWCC_NODS:  # no Sources found
-                print('not sources!!!')
-            return []
-        source_info = SourceInfo(
-                       tw_source.Id,
-                       tw_source.ProductName.decode("utf-8"),
-                       str(tw_source.ProtocolMajor)+"."+str(tw_source.ProtocolMinor))
-        self.sources_info.append(source_info)
-        self.tw_sources_dict[tw_source.Id] = tw_source
-
-        while 1:
+        try:
+            if self.send_message_callback:
+                self.send_message_callback.__call__("Sources starts search")
             tw_source = TW_IDENTITY()
-            rc = self.dsm_entry(self._tw_app, None, DG_CONTROL, DAT_IDENTITY, MSG_GETNEXT, byref(tw_source))
-            if rc == TWRC_ENDOFLIST:
-                break
+            rc = self.dsm_entry(self._tw_app, None, DG_CONTROL, DAT_IDENTITY, MSG_GETFIRST, byref(tw_source))
+            if rc == TWRC_SUCCESS:
+                if self.send_message_callback:
+                    self.send_message_callback.__call__("(TWRC_SUCCESS=0) first source is searched")
+            if rc == TWRC_FAILURE:  # 1 error
+                cc = self.get_failure_condition_code(None)
+                if cc == TWCC_NODS:  # no Sources found
+                    if self.send_message_callback:
+                        self.send_message_callback.__call__("(TWRC_FAILURE=1, TWCC_NODS=3) sources is not found")
+                return []
             source_info = SourceInfo(
-                tw_source.Id,
-                tw_source.ProductName.decode("utf-8"),
-                str(tw_source.ProtocolMajor) + "." + str(tw_source.ProtocolMinor))
+                        tw_source.Id,
+                        tw_source.ProductName.decode("utf-8"),
+                        str(tw_source.ProtocolMajor)+"."+str(tw_source.ProtocolMinor))
             self.sources_info.append(source_info)
             self.tw_sources_dict[tw_source.Id] = tw_source
 
+            while True:
+                tw_source = TW_IDENTITY()
+                rc = self.dsm_entry(self._tw_app, None, DG_CONTROL, DAT_IDENTITY, MSG_GETNEXT, byref(tw_source))
+                if rc == TWRC_SUCCESS:
+                    if self.send_message_callback:
+                        self.send_message_callback.__call__("(TWRC_SUCCESS=0) next source is searched")
+                elif rc == TWRC_ENDOFLIST:
+                    if self.send_message_callback:
+                        self.send_message_callback.__call__("(TWRC_ENDOFLIST=7) no more sources for search")
+                    break
+                else:
+                    if self.send_message_callback:
+                        self.send_message_callback.__call__("(TWRC=%d) next source is not searched" % rc)
+                source_info = SourceInfo(
+                    tw_source.Id,
+                    tw_source.ProductName.decode("utf-8"),
+                    str(tw_source.ProtocolMajor) + "." + str(tw_source.ProtocolMinor))
+                self.sources_info.append(source_info)
+                self.tw_sources_dict[tw_source.Id] = tw_source
+
+            if self.send_message_callback:
+                self.send_message_callback.__call__("Sources are searched")
+        except Exception as e:
+            if self.send_message_callback:
+                self.send_message_callback.__call__("APPLICATION EXCEPTION: " + str(e))
+
         return self.sources_info
 
-    def open_source(self, source_id, send_message_handler=None):
+    def open_source(self, source_id):
         '''
         3 --> 4 open Source
         :param source_id:
         :return: Source
         '''
-        tw_source = self.tw_sources_dict[source_id]
-        rc = self.dsm_entry(self._tw_app, None, DG_CONTROL, DAT_IDENTITY, MSG_OPENDS, byref(tw_source))
-        if rc != TWRC_SUCCESS:
-            return
-        self.tw_current_source = tw_source
-        return Source(self, send_message_handler)
+        try:
+            tw_source = self.tw_sources_dict[source_id]
+            if self.send_message_callback:
+                self.send_message_callback.__call__("Source (%s) starts opening" % tw_source.ProductName.decode("utf-8"))
+            rc = self.dsm_entry(self._tw_app, None, DG_CONTROL, DAT_IDENTITY, MSG_OPENDS, byref(tw_source))
+            if rc == TWRC_SUCCESS:
+                self.tw_current_source = tw_source
+                if self.send_message_callback:
+                    self.send_message_callback.__call__("Source (%s) is opened" % tw_source.ProductName.decode("utf-8"))
+                return Source(self)
+            else:
+                if self.send_message_callback:
+                    self.send_message_callback.__call__("(TWRC=%d) Source (%s) is opened" % (rc, tw_source.ProductName.decode("utf-8")))
+                return None
+        except Exception as e:
+            if self.send_message_callback:
+                self.send_message_callback.__call__("APPLICATION EXCEPTION: " + str(e))
+            return None
 
     def close_source(self, source_id):
         '''
@@ -239,11 +307,21 @@ class SourceManager():
         :param source_id:
         :return:
         '''
-        tw_source = self.tw_sources_dict[source_id]
-        rc = self.dsm_entry(self._tw_app, None, DG_CONTROL, DAT_IDENTITY, MSG_CLOSEDS, byref(tw_source))
-        if rc != TWRC_SUCCESS:
-            return
-        self.tw_current_source = None
+        try:
+            tw_source = self.tw_sources_dict[source_id]
+            if self.send_message_callback:
+                self.send_message_callback.__call__("Source (%s) starts closing" % tw_source.ProductName.decode("utf-8"))
+            rc = self.dsm_entry(self._tw_app, None, DG_CONTROL, DAT_IDENTITY, MSG_CLOSEDS, byref(tw_source))
+            if rc == TWRC_SUCCESS:
+                if self.send_message_callback:
+                    self.send_message_callback.__call__("Source (%s) is closed" % tw_source.ProductName.decode("utf-8"))
+                self.tw_current_source = None
+            else:
+                if self.send_message_callback:
+                    self.send_message_callback.__call__("(TWRC=%d) Source (%s) is not closed" % (rc, tw_source.ProductName.decode("utf-8")))
+        except Exception as e:
+            if self.send_message_callback:
+                self.send_message_callback.__call__("APPLICATION EXCEPTION: " + str(e))
 
     def get_failure_condition_code(self, tw_source):
         status = TW_STATUS()
@@ -259,12 +337,12 @@ class SourceInfo():
 
 
 class Source():
-    def __init__(self, source_manager, send_message_handler):
+    def __init__(self, source_manager):
         self._tw_app = source_manager._tw_app
         self.dsm_entry = source_manager.dsm_entry
         self._hwnd = source_manager._hwnd
+        self.send_message_callback = source_manager.send_message_callback
         self.tw_source = source_manager.tw_current_source
-        self.send_message_handler = send_message_handler
 
     def get_id(self):
         return self.tw_source.Id
@@ -280,25 +358,45 @@ class Source():
         4 --> 5 enable Source
         :return:
         '''
-        ui = TW_USERINTERFACE(ShowUI=False, ModalUI=False, hParent=self._hwnd)
-        rc = self.dsm_entry(self._tw_app, self.tw_source, DG_CONTROL, DAT_USERINTERFACE, MSG_ENABLEDS, byref(ui))
-        if rc != TWRC_SUCCESS:
-            return
+        if self.send_message_callback:
+            self.send_message_callback.__call__("Source (%s) starts enabling" % self.get_name())
+        try:
+            ui = TW_USERINTERFACE(ShowUI=False, ModalUI=False, hParent=self._hwnd)
+            rc = self.dsm_entry(self._tw_app, self.tw_source, DG_CONTROL, DAT_USERINTERFACE, MSG_ENABLEDS, byref(ui))
+            if rc == TWRC_SUCCESS:
+                if self.send_message_callback:
+                    self.send_message_callback("(TWRC_SUCCESS=0) Source (%s) is enabled" % self.get_name())
+            else:
+                if self.send_message_callback:
+                    self.send_message_callback("(TWRC=%d) Source (%s) is not enabled" % (rc, self.get_name()))
+        except Exception as e:
+            if self.send_message_callback:
+                self.send_message_callback.__call__("APPLICATION EXCEPTION: " + str(e))
 
     def disable(self):
         '''
         5 --> 4 disable Source
         :return:
         '''
-        ui = TW_USERINTERFACE(ShowUI=False, ModalUI=False, hParent=self._hwnd)
-        rc = self.dsm_entry(self._tw_app, self.tw_source, DG_CONTROL, DAT_USERINTERFACE, MSG_DISABLEDS, byref(ui))
-        if rc == TWRC_SUCCESS:
-            return
-        if rc == TWRC_FAILURE:
-            cc = self.get_failure_condition_code()
-            if cc == TWCC_SEQERROR:
-                pass
-        pass
+        if self.send_message_callback:
+            self.send_message_callback.__call__("Source (%s) starts disabling" % self.get_name())
+        try:
+            ui = TW_USERINTERFACE(ShowUI=False, ModalUI=False, hParent=self._hwnd)
+            rc = self.dsm_entry(self._tw_app, self.tw_source, DG_CONTROL, DAT_USERINTERFACE, MSG_DISABLEDS, byref(ui))
+            if rc == TWRC_SUCCESS:
+                if self.send_message_callback:
+                    self.send_message_callback.__call__("Source (%s) is disabled" % self.get_name())
+                return
+            if rc == TWRC_FAILURE:
+                cc = self.get_failure_condition_code()
+                if self.send_message_callback:
+                    self.send_message_callback.__call__("(TWRC_FAILURE=1, TWCC=%d) Source (%s) is not disabled" % (cc, self.get_name()))
+                if cc == TWCC_SEQERROR:
+                    pass
+            pass
+        except Exception as e:
+            if self.send_message_callback:
+                self.send_message_callback.__call__("APPLICATION EXCEPTION: " + str(e))
 
     def get_failure_condition_code(self):
         status = TW_STATUS()
@@ -306,9 +404,8 @@ class Source():
         return status.ConditionCode
 
     def scan(self):
-        if self.send_message_handler:
-            self.send_message_handler.__call__("Start scanning")
-            self.send_message_handler.__call__("Start loop")
+        if self.send_message_callback:
+            self.send_message_callback.__call__("Source (%s) starts scanning" % self.tw_source.ProductName.decode("utf-8"))
         self.enable()
         self._modal_loop()
 
@@ -325,6 +422,8 @@ class Source():
         return rv, event.TWMessage
 
     def _modal_loop(self, callback=None):
+        if self.send_message_callback:
+            self.send_message_callback.__call__("Starts loop")
         done = False
         msg = MSG()
         while not done:
@@ -339,6 +438,8 @@ class Source():
                 #_TranslateMessage(byref(msg))
                 #_DispatchMessage(byref(msg))
                 x = 1
+        if self.send_message_callback:
+            self.send_message_callback.__call__("Ends loop")
 
     def callback(self, event):
         if event == MSG_XFERREADY:
