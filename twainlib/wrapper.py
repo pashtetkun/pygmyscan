@@ -426,10 +426,14 @@ class Source():
                             DAT_EVENT,
                             MSG_PROCESSEVENT,
                             byref(event))
+        code = ''
         if event.TWMessage == MSG_XFERREADY:
             self._state = 'ready'
+            code = "TWRC_DSEVENT=4, MSG_XFERREADY=257"
+        else:
+            code = "TWRC=%d, MSG=%d" % ((rc, event.TWMessage))
         if self.send_message_callback:
-            self.send_message_callback.__call__("..(TWRC=%d, MSG=%d) Event is processed" % (rc, event.TWMessage))
+            self.send_message_callback.__call__("..(%s) Event is processed" % code)
         return rc, event.TWMessage
 
     def app_event_loop(self, callback=None):
@@ -455,10 +459,18 @@ class Source():
 
     def get_image(self, event):
         if event == MSG_XFERREADY: #data is ready for transfer
-            rv, handle = self.get_native_image()
-            image = _Image(handle)
-            filename = self.filename + ".bmp"
-            image.save(os.path.join(self.save_to, filename))
+            if self.send_message_callback:
+                self.send_message_callback("..Data is ready for transfer")
+            try:
+                rv, handle = self.get_native_image()
+                image = _Image(handle)
+                filename = self.filename + ".bmp"
+                image.save(os.path.join(self.save_to, filename))
+                if self.send_message_callback:
+                    self.send_message_callback("..Image is saved")
+            except Exception as e:
+                if self.send_message_callback:
+                    self.send_message_callback.__call__("APPLICATION EXCEPTION: " + str(e))
 
     def get_native_image(self):
         """Perform a 'Native' form transfer of the image.
@@ -474,16 +486,22 @@ class Source():
 
         Valid states: 6
         """
-        hbitmap = c_void_p()
-        rv = self.dsm_entry(self._tw_app, self.tw_source, DG_IMAGE,
-                            DAT_IMAGENATIVEXFER,
-                            MSG_GET,
-                            byref(hbitmap))
-        #rv, hbitmap = self._get_native_image()
-        #more = self._end_xfer()
-        if rv == TWRC_CANCEL:
-            raise excDSTransferCancelled
-        return rv, hbitmap
+        if self.send_message_callback:
+            self.send_message_callback("..Image starts getting in native mode")
+        try:
+            hbitmap = c_void_p()
+            rv = self.dsm_entry(self._tw_app, self.tw_source, DG_IMAGE,
+                                DAT_IMAGENATIVEXFER,
+                                MSG_GET,
+                                byref(hbitmap))
+            #rv, hbitmap = self._get_native_image()
+            #more = self._end_xfer()
+            if rv == TWRC_CANCEL:
+                raise excDSTransferCancelled
+            return rv, hbitmap
+        except Exception as e:
+            if self.send_message_callback:
+                self.send_message_callback.__call__("APPLICATION EXCEPTION: " + str(e))
 
 
 def _win_check(result, func, args):
