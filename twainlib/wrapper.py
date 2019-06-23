@@ -9,6 +9,7 @@ from twainlib.constants import *
 #from pywin32 import GetFileVersionInfo, LOWORD, HIWORD
 #from win32.win32api import GetFileVersionInfo
 #from win32.win32api import
+import os
 
 
 class Application():
@@ -343,6 +344,8 @@ class Source():
         self._hwnd = source_manager._hwnd
         self.send_message_callback = source_manager.send_message_callback
         self.tw_source = source_manager.tw_current_source
+        self.save_to = None
+        self.filename = None
 
     def get_id(self):
         return self.tw_source.Id
@@ -403,15 +406,21 @@ class Source():
         self.dsm_entry(self._tw_app, self.tw_source, DG_CONTROL, DAT_STATUS, MSG_GET, byref(status))
         return status.ConditionCode
 
-    def scan(self):
+    def scan(self, save_to, filename):
         if self.send_message_callback:
             self.send_message_callback.__call__("Source (%s) starts scanning" % self.tw_source.ProductName.decode("utf-8"))
+        self.save_to = save_to
+        self.filename = filename
         self.enable()
-        self._modal_loop()
+        self.app_event_loop(self.get_image)
+        if self.send_message_callback:
+            self.send_message_callback.__call__("Source (%s) ends scanning" % self.tw_source.ProductName.decode("utf-8"))
 
     def _process_event(self, msg_ref):
+        if self.send_message_callback:
+            self.send_message_callback.__call__("..Event starts processing")
         event = TW_EVENT(cast(msg_ref, c_void_p), 0)
-        rv = self.dsm_entry(self._tw_app,
+        rc = self.dsm_entry(self._tw_app,
                             self.tw_source,
                             DG_CONTROL,
                             DAT_EVENT,
@@ -419,33 +428,37 @@ class Source():
                             byref(event))
         if event.TWMessage == MSG_XFERREADY:
             self._state = 'ready'
-        return rv, event.TWMessage
-
-    def _modal_loop(self, callback=None):
         if self.send_message_callback:
-            self.send_message_callback.__call__("Starts loop")
+            self.send_message_callback.__call__("..(TWRC=%d, MSG=%d) Event is processed" % (rc, event.TWMessage))
+        return rc, event.TWMessage
+
+    def app_event_loop(self, callback=None):
+        if self.send_message_callback:
+            self.send_message_callback.__call__("Starts application loop")
         done = False
         msg = MSG()
         while not done:
             if not _GetMessage(byref(msg), 0, 0, 0):
                 break
+            if self.send_message_callback:
+                self.send_message_callback.__call__("..Message is getted")
             rc, event = self._process_event(byref(msg))
-            #if callback:
-            self.callback(event)
-            if event in (MSG_XFERREADY, MSG_CLOSEDSREQ):
+            if callback:
+                callback(event)
+            if event in (MSG_XFERREADY, MSG_CLOSEDSREQ):#data is ready for transfer, source UI was disabled
                 done = True
-            if rc == TWRC_NOTDSEVENT:
-                #_TranslateMessage(byref(msg))
-                #_DispatchMessage(byref(msg))
-                x = 1
+            if rc == TWRC_NOTDSEVENT: # this not Source event
+                _TranslateMessage(byref(msg))
+                _DispatchMessage(byref(msg))
         if self.send_message_callback:
-            self.send_message_callback.__call__("Ends loop")
+            self.send_message_callback.__call__("Ends application loop")
 
-    def callback(self, event):
-        if event == MSG_XFERREADY:
+    def get_image(self, event):
+        if event == MSG_XFERREADY: #data is ready for transfer
             rv, handle = self.get_native_image()
             image = _Image(handle)
-            image.save("C:/1/test2.bmp")
+            filename = self.filename + ".bmp"
+            image.save(os.path.join(self.save_to, filename))
 
     def get_native_image(self):
         """Perform a 'Native' form transfer of the image.

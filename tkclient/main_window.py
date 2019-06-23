@@ -8,6 +8,8 @@ import twainlib.wrapper
 #from twainlib.wrapper import Application
 from datetime import datetime
 import tkinter.scrolledtext as tkscrolled
+from tkinter import filedialog
+import os
 
 STATES = {1: "1: Pre-Session",
           2: "2: Source Manager Loaded",
@@ -113,6 +115,24 @@ class MainWindow:
         self.table_sources.grid(row=0, column=0, sticky="ew")
         self.table_sources.config(height=6)
         self.table_sources.grid_remove()
+
+        self.scan_frame = ttk.Frame(self.right_frame)
+        self.scan_frame.grid(row=0, column=0, sticky="ew")
+        self.scan_frame.grid_remove()
+        self.save_to_label = ttk.Label(self.scan_frame, text="Folder for saving")
+        self.save_to_label.grid(row=0, column=0)
+        self.var_save_to = tkinter.StringVar()
+        self.save_to_entry = ttk.Entry(self.scan_frame, textvariable=self.var_save_to)
+        self.save_to_entry.grid(row=0, column=1)
+        self.var_save_to.set("C:\\1")
+        self.save_to_button = ttk.Button(self.scan_frame, text="...", command=self.choose_save_to)
+        self.save_to_button.grid(row=0, column=2)
+        self.filename_label = ttk.Label(self.scan_frame, text="Filename")
+        self.filename_label.grid(row=1, column=0)
+        self.var_filename = tkinter.StringVar()
+        self.filename_entry = ttk.Entry(self.scan_frame, textvariable=self.var_filename)
+        self.filename_entry.grid(row=1, column=1)
+        self.var_filename.set("sample")
 
         self.bottom_frame = ttk.Frame(self.root)
         self.bottom_frame.grid(row=3, column=0, columnspan=2, sticky="ew")
@@ -222,6 +242,7 @@ class MainWindow:
         text = "Source (%s) is opened" % self.current_source.get_name()
         self.var_source_status.set(text)
         self.table_sources.grid_remove()
+        self.scan_frame.grid()
 
     def close_source(self):
         self.source_manager.close_source(self.current_source.get_id())
@@ -229,6 +250,7 @@ class MainWindow:
         text = "Source (%s) is closed" % self.current_source.get_name()
         self.var_source_status.set("")
         self.current_source = None
+        self.scan_frame.grid_remove()
         self.table_sources.grid()
 
     '''
@@ -250,12 +272,26 @@ class MainWindow:
     '''
 
     def scan(self):
-        self.current_source.scan()
+        dir = self.var_save_to.get()
+        filename = self.var_filename.get()
+        if not dir:
+            self.insert_text("Folder for saving is not choosed")
+            return
+        if not filename:
+            self.insert_text("Filename is empty")
+            return
+        if not os.path.exists(dir):
+            os.makedirs(dir)
+        self.current_source.scan(dir, filename)
 
     def insert_text(self, text):
         var_datetime = datetime.now().strftime('%Y-%m-%d %H:%M:%S ')
         self.text_area.insert(tkinter.END, var_datetime + text+"\n")
         self.text_area.see(tkinter.END)
+
+    def choose_save_to(self):
+        dir = filedialog.askdirectory()
+        self.var_save_to.set(dir)
 
 
 if __name__ == "__main__":
