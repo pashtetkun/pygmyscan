@@ -426,12 +426,24 @@ class Source():
                             DAT_EVENT,
                             MSG_PROCESSEVENT,
                             byref(event))
-        code = ''
+        twrc = ''
+        msg = ''
+        if rc == TWRC_DSEVENT:
+            twrc = 'TWRC_DSEVENT=4'
+        if rc == TWRC_NOTDSEVENT:
+            twrc = 'TWRC_NOTDSEVENT=5'
+        if not twrc:
+            twrc = 'TWRC=%d' % rc
+
+        if event.TWMessage == MSG_NULL:
+            msg = 'MSG_NULL=0'
         if event.TWMessage == MSG_XFERREADY:
             self._state = 'ready'
-            code = "TWRC_DSEVENT=4, MSG_XFERREADY=257"
-        else:
-            code = "TWRC=%d, MSG=%d" % ((rc, event.TWMessage))
+            msg = "MSG_XFERREADY=257"
+        if not msg:
+            msg = 'MSG=%d' % event.TWMessage
+
+        code = "%s, %s" % (twrc, msg)
         if self.send_message_callback:
             self.send_message_callback.__call__("..(%s) Event is processed" % code)
         return rc, event.TWMessage
