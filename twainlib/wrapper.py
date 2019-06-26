@@ -515,6 +515,32 @@ class Source():
             if self.send_message_callback:
                 self.send_message_callback.__call__("APPLICATION EXCEPTION: " + str(e))
 
+    def cap_image_count_get(self):
+        cap_id = CAP_XFERCOUNT
+        con_type = TWON_DONTCARE16 #Source will specify
+        twCapability = TW_CAPABILITY(cap_id, TWON_DONTCARE16, None)
+        rc = self.dsm_entry(self._tw_app, self.tw_source, DG_CONTROL, DAT_CAPABILITY, MSG_GET, byref(twCapability))
+        if rc == TWRC_SUCCESS:
+            if twCapability.ConType == TWON_ONEVALUE:
+                ptr = _GlobalLock(twCapability.hContainer)
+                type_id = cast(ptr, POINTER(c_uint16))[0]
+                if not is_good_type(type_id):
+                    msg = "Capability Code = %d, Format Code = %d, Item Type = %d" % (cap_id,
+                                                                                      twCapability.ConType,
+                                                                                      type_id)
+                    raise excCapabilityFormatNotSupported(msg)
+                ctype = mapping_types.get(type_id)
+                val = cast(ptr + 2, POINTER(ctype))[0]
+                if type_id in (TWTY_INT8, TWTY_UINT8, TWTY_INT16, TWTY_UINT16, TWTY_UINT32, TWTY_INT32):
+                    pass
+                elif type_id == TWTY_BOOL:
+                    val = bool(val)
+                elif type_id == TWTY_FIX32:
+                    val = fix2float(val)
+                elif type_id == TWTY_FRAME:
+                    val = frame2tuple(val)
+                x = 1
+
 
 def _win_check(result, func, args):
     if func is _GlobalFree:

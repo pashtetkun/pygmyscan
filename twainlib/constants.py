@@ -1363,3 +1363,32 @@ _exc_mapping = {TWCC_SUCCESS: excTWCC_SUCCESS,
                 TWCC_PAPERDOUBLEFEED: excTWCC_PAPERDOUBLEFEED,
                 TWCC_FILEWRITEERROR: excTWCC_FILEWRITEERROR,
                 TWCC_CHECKDEVICEONLINE: excTWCC_CHECKDEVICEONLINE}
+
+mapping_types = {TWTY_INT8: c_int8,
+            TWTY_UINT8: c_uint8,
+            TWTY_INT16: c_int16,
+            TWTY_UINT16: c_uint16,
+            TWTY_UINT32: c_uint32,
+            TWTY_INT32: c_int32,
+            TWTY_BOOL: c_uint16,
+            TWTY_FIX32: TW_FIX32,
+            TWTY_FRAME: TW_FRAME,
+            TWTY_STR32: c_char*34,
+            TWTY_STR64: c_char*66,
+            TWTY_STR128: c_char*130,
+            TWTY_STR255: c_char*255}
+
+
+def is_good_type(type_id):
+    return type_id in list(mapping_types.keys())
+
+
+def fix2float(x):
+    return x.Whole + float(x.Frac) / 2**16
+
+
+def frame2tuple(frame):
+    return (fix2float(frame.Left),
+            fix2float(frame.Top),
+            fix2float(frame.Right),
+            fix2float(frame.Bottom))

@@ -116,6 +116,14 @@ class MainWindow:
         self.table_sources.config(height=6)
         self.table_sources.grid_remove()
 
+        '''
+        self.capabilities_frame = ttk.Frame(self.right_frame)
+        self.capabilities_frame.grid(row=0, column=0, sticky="ew")
+        self.capabilities_frame.grid_remove()
+        self.button_image_count_get = ttk.Button(self, text="Get image count", command=self.cap_get_image_count)
+        self.button_image_count_get.grid(row=0, column=0)
+        '''
+
         self.scan_frame = ttk.Frame(self.right_frame)
         self.scan_frame.grid(row=0, column=0, sticky="ew")
         self.scan_frame.grid_remove()
@@ -133,6 +141,8 @@ class MainWindow:
         self.filename_entry = ttk.Entry(self.scan_frame, textvariable=self.var_filename)
         self.filename_entry.grid(row=1, column=1)
         self.var_filename.set("sample")
+        self.button_image_count_get = ttk.Button(self.scan_frame, text="Get image count", command=self.cap_get_image_count)
+        self.button_image_count_get.grid(row=2, column=0)
 
         self.bottom_frame = ttk.Frame(self.root)
         self.bottom_frame.grid(row=3, column=0, columnspan=2, sticky="ew")
@@ -292,6 +302,9 @@ class MainWindow:
     def choose_save_to(self):
         dir = filedialog.askdirectory()
         self.var_save_to.set(dir)
+
+    def cap_get_image_count(self):
+        self.current_source.cap_image_count_get()
 
 
 if __name__ == "__main__":
